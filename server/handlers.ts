@@ -192,3 +192,28 @@ export async function handleLeaderboard(req: Request, deps: Deps): Promise<Respo
     return json(502, { error: 'store', detail: e instanceof StoreError ? e.message : 'unknown' });
   }
 }
+
+/**
+ * GET /api/health: tells whether the online leaderboard is set up, without
+ * revealing any secret. Open it in a browser to check the Firebase settings.
+ */
+export async function handleHealth(deps: Deps): Promise<Response> {
+  const store = deps.store;
+  if (!store) {
+    return json(200, {
+      configured: false,
+      reachable: false,
+      hint: 'Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in Netlify, then deploy again.',
+    });
+  }
+  try {
+    await store.top('lb_cloud-sea', 'score', 1);
+    return json(200, { configured: true, reachable: true });
+  } catch (e) {
+    return json(200, {
+      configured: true,
+      reachable: false,
+      error: e instanceof StoreError ? e.message : 'Unknown error',
+    });
+  }
+}
