@@ -19,7 +19,7 @@ export type SubmitResult =
   | { ok: true; score: number; best: number; improved: boolean; rank: number }
   | { ok: false; error: string };
 
-async function request(path: string, init?: RequestInit): Promise<{ status: number; body: Record<string, unknown> | null }> {
+export async function request(path: string, init?: RequestInit): Promise<{ status: number; body: Record<string, unknown> | null }> {
   const ctrl = new AbortController();
   const timer = window.setTimeout(() => ctrl.abort(), 15000);
   try {

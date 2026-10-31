@@ -5,6 +5,11 @@
  */
 export const CORE_VERSION = 'core-2';
 
+/** Version of the online message format. Devices with different versions cannot play together. */
+export const NET_PROTOCOL = 'p1';
+/** Pilots per online game, bots included. */
+export const MAX_ONLINE_PILOTS = 8;
+
 /** Fixed simulation rate. Every device steps the world exactly this often. */
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;

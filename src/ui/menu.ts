@@ -2,7 +2,24 @@ import { LEVELS, LEVEL_ORDER, type LevelSpec } from '../core/levels';
 import { DIFFICULTY_FACTOR, POINTS, type SoloScore } from '../core/solo';
 import type { Difficulty, LevelId } from '../core/types';
 import { onlineErrorText, type BoardResult } from '../net/api';
+import type { ListResult } from '../net/games';
+import type { OnlineSession } from '../online/session';
 import { LOCAL_TOP, saveProfile, validateCallsign, type Profile, type Quality } from '../storage/profile';
+import { ARROW, esc, frame, ordinal, wordmark } from './html';
+import {
+  clampBots,
+  codeScreen,
+  connectingScreen,
+  consentScreen,
+  gamesHtml,
+  hostScreen,
+  listScreen,
+  lobbyScreen,
+  micLine,
+  nextLine,
+  onlinePauseScreen,
+  pilotsHtml,
+} from './online-screens';
 
 export interface ResultInfo {
   score: SoloScore;
@@ -26,21 +43,40 @@ export interface MenuHandlers {
   settingsChanged(): void;
   click(): void;
   loadBoard(level: LevelId): Promise<BoardResult>;
+  online: OnlineHandlers;
 }
 
-type Screen = 'callsign' | 'main' | 'solo' | 'howto' | 'settings' | 'online' | 'board' | 'pause' | 'result' | 'nogl';
+export interface OnlineHandlers {
+  list(): Promise<ListResult>;
+  /** Opens a new game with the host settings from the profile. */
+  host(): void;
+  join(code: string): void;
+  cancel(): void;
+  session(): OnlineSession | null;
+  leave(): void;
+  resumeFlight(): void;
+  /** Talk button in the lobby: toggles the microphone. */
+  toggleTalk(): void;
+  touch(): boolean;
+}
 
-const ARROW =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg>';
-
-const ART = `
-<div class="m-art" aria-hidden="true">
-  <svg viewBox="0 0 600 800" preserveAspectRatio="xMidYMid meet">
-    <path class="flow" pathLength="1000" d="M-20 700 C140 640 120 460 260 430 S520 470 470 300 S300 120 560 70"/>
-    <path class="flow thin" pathLength="1000" d="M-20 744 C160 690 150 500 290 470 S560 500 500 330 S330 150 600 100"/>
-    <polygon class="flow-head" points="573.7,67.4 551.9,80.7 548.5,63.1"/>
-  </svg>
-</div>`;
+type Screen =
+  | 'callsign'
+  | 'main'
+  | 'solo'
+  | 'howto'
+  | 'settings'
+  | 'online'
+  | 'host'
+  | 'code'
+  | 'consent'
+  | 'connecting'
+  | 'lobby'
+  | 'online-pause'
+  | 'board'
+  | 'pause'
+  | 'result'
+  | 'nogl';
 
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { rookie: 'Rookie', pilot: 'Pilot', ace: 'Ace' };
 
@@ -48,23 +84,10 @@ export function formatScore(n: number): string {
   return Math.round(n).toLocaleString('en-US');
 }
 
-function ordinal(n: number): string {
-  const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
-  return `${n}${n % 10 > 3 ? 'th' : s}`;
-}
-
 export function formatTime(s: number): string {
   const m = Math.floor(s / 60);
   const r = s - m * 60;
   return `${m}:${r < 10 ? '0' : ''}${r.toFixed(1)}`;
-}
-
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
-}
-
-function wordmark(tag = 'h1'): string {
-  return `<${tag} class="wordmark" aria-label="iamSpacePilot"><span class="w1">iam</span><span class="w2">Space</span><span class="w3">Pilot</span></${tag}>`;
 }
 
 /** The yellow menu screens. */
@@ -77,6 +100,15 @@ export class Menu {
   private onlineStatus = '';
   /** Where Settings returns to: the main menu or the pause menu. */
   private settingsReturn: Screen = 'main';
+  /** Online: what to do once the pilot agreed to the radio rules. */
+  private afterConsent: (() => void) | null = null;
+  private listTimer = 0;
+  private listNotice = '';
+  private connect = { title: '', text: '', failed: false };
+  private lastNext = '';
+  private onlineCount = -1;
+  /** Invite link opened before a callsign was chosen. */
+  private pendingJoin = '';
 
   constructor(
     private readonly root: HTMLElement,
@@ -97,8 +129,13 @@ export class Menu {
     this.root.hidden = true;
   }
 
+  get current(): Screen {
+    return this.screen;
+  }
+
   show(screen: Screen, result?: ResultInfo): void {
     if (result) this.result = result;
+    if (screen !== 'online') this.stopList();
     this.screen = screen;
     this.root.hidden = false;
     this.root.innerHTML = this.render(screen);
@@ -108,6 +145,123 @@ export class Menu {
       (this.root.querySelector('.mi:not([aria-disabled="true"])') as HTMLElement | null);
     first?.focus({ preventScroll: true });
     if (screen === 'board') this.loadBoard();
+    if (screen === 'online') this.startList();
+    if (screen === 'main') this.loadCount();
+  }
+
+  /** "who is online?" shows the number of pilots online next to it. */
+  private loadCount(): void {
+    void this.h.online.list().then((res) => {
+      this.onlineCount = res.ok ? res.online : -1;
+      const el = this.root.querySelector('#wio-count');
+      if (el && this.screen === 'main') {
+        el.textContent = res.ok && res.online > 0 ? `${res.online} online` : '';
+        (el as HTMLElement).hidden = !(res.ok && res.online > 0);
+      }
+    });
+  }
+
+  /** Invite link: joins that game, after the callsign and the radio rules if needed. */
+  joinFromLink(code: string): void {
+    if (!this.profile.callsign) {
+      this.pendingJoin = code;
+      return;
+    }
+    this.listNotice = '';
+    this.show('online');
+    this.withConsent(() => this.h.online.join(code));
+  }
+
+  /** Shows the game list and keeps it fresh while it is on screen. */
+  showList(notice = ''): void {
+    this.listNotice = notice;
+    this.show('online');
+  }
+
+  private startList(): void {
+    this.stopList();
+    const load = () => {
+      void this.h.online.list().then((res) => {
+        if (this.screen !== 'online') return;
+        const { count, list } = gamesHtml(res);
+        const c = this.root.querySelector('#on-count');
+        const l = this.root.querySelector('#on-games');
+        if (c) c.textContent = count;
+        if (l) {
+          // Keep the focused Join button focused across refreshes.
+          const focused = (document.activeElement as HTMLElement | null)?.dataset.val;
+          l.innerHTML = list;
+          if (focused) (l.querySelector(`[data-val="${focused}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
+        }
+      });
+    };
+    load();
+    this.listTimer = window.setInterval(load, 4000);
+  }
+
+  private stopList(): void {
+    if (this.listTimer) window.clearInterval(this.listTimer);
+    this.listTimer = 0;
+  }
+
+  /** Online: progress while joining. */
+  connecting(title: string, text: string, failed = false): void {
+    this.connect = { title, text, failed };
+    this.show('connecting');
+  }
+
+  /** Online: something in the lobby changed. Redraws it and keeps the focus. */
+  onlineChanged(): void {
+    if (this.root.hidden || this.screen !== 'lobby') return;
+    const a = document.activeElement as HTMLElement | null;
+    const act = a?.dataset.act;
+    const val = a?.dataset.val;
+    const top = this.root.scrollTop;
+    this.root.innerHTML = this.render('lobby');
+    this.root.scrollTop = top;
+    if (act) {
+      const sel = val ? `[data-act="${act}"][data-val="${CSS.escape(val)}"]` : `[data-act="${act}"]`;
+      (this.root.querySelector(sel) as HTMLElement | null)?.focus({ preventScroll: true });
+    }
+  }
+
+  /** Online: who talks changed. Updates only the pilot list and the mic line. */
+  radioChanged(): void {
+    if (this.root.hidden || this.screen !== 'lobby') return;
+    const s = this.h.online.session();
+    if (!s) return;
+    const box = this.root.querySelector('#on-pilots');
+    if (box) {
+      const focused = (document.activeElement as HTMLElement | null)?.dataset.val;
+      box.innerHTML = pilotsHtml(s);
+      if (focused) (box.querySelector(`[data-val="${CSS.escape(focused)}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
+    }
+    const mic = this.root.querySelector('#on-mic');
+    if (mic) mic.textContent = micLine(s, this.h.online.touch());
+    const talk = this.root.querySelector('#on-talk');
+    if (talk) {
+      talk.setAttribute('aria-pressed', String(s.talking));
+      talk.textContent = s.talking ? 'Mic live' : 'Talk';
+    }
+    const n = this.root.querySelector('#on-notice') as HTMLElement | null;
+    if (n) {
+      n.textContent = s.notice;
+      n.hidden = !s.notice;
+    }
+  }
+
+  /** Called every frame: keeps the next-round countdown current. */
+  tick(): void {
+    if (this.root.hidden || this.screen !== 'lobby') return;
+    const s = this.h.online.session();
+    if (!s) return;
+    const line = nextLine(s);
+    if (line === this.lastNext) return;
+    this.lastNext = line;
+    const el = this.root.querySelector('#on-next');
+    if (el) el.textContent = line;
+    const start = this.root.querySelector('[data-act="l-start"]');
+    if (start) start.textContent = s.match.secondsToNext() >= 0 ? 'Start now' : 'Start the round';
   }
 
   /** Updates the online line on the result screen once the server answers. */
@@ -167,6 +321,15 @@ export class Menu {
       this.h.resume();
       return;
     }
+    if (this.screen === 'online-pause') {
+      this.h.online.resumeFlight();
+      return;
+    }
+    if (this.screen === 'connecting') {
+      this.h.click();
+      this.h.online.cancel();
+      return;
+    }
     if (this.back) {
       this.h.click();
       this.show(this.back);
@@ -178,17 +341,25 @@ export class Menu {
       if ((e.target as HTMLElement).tagName === 'INPUT' && (e.target as HTMLInputElement).type === 'range') return;
       e.preventDefault();
       this.moveFocus(e.key === 'ArrowDown' ? 1 : -1);
-    } else if (e.key === 'Escape' && this.screen !== 'pause') {
+    } else if (e.key === 'Escape' && this.screen !== 'pause' && this.screen !== 'online-pause') {
       e.stopPropagation();
       this.goBack();
     } else if (e.key === 'Enter' && (e.target as HTMLElement).id === 'callsign') {
       e.preventDefault();
       this.submitCallsign();
+    } else if (e.key === 'Enter' && (e.target as HTMLElement).id === 'gamecode') {
+      e.preventDefault();
+      this.submitCode();
     }
   }
 
   private onInput(e: Event): void {
     const t = e.target as HTMLInputElement;
+    if (t.id === 'gamecode') {
+      const v = t.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (v !== t.value) t.value = v;
+      return;
+    }
     if (t.id === 'volume') {
       this.profile.settings.volume = Number(t.value) / 100;
       this.h.settingsChanged();
@@ -204,8 +375,83 @@ export class Menu {
     this.h.click();
     switch (act) {
       case 'go':
-        if (val === 'settings') this.settingsReturn = this.screen === 'pause' ? 'pause' : 'main';
+        if (val === 'settings') this.settingsReturn = this.screen === 'pause' || this.screen === 'online-pause' ? this.screen : 'main';
+        if (val === 'online') this.listNotice = '';
         this.show(val as Screen);
+        break;
+      case 'host-setup':
+        this.show('host');
+        break;
+      case 'o-level':
+        p.online.level = val as LevelId;
+        this.refreshHost();
+        break;
+      case 'o-mode':
+        p.online.mode = val === 'teams' ? 'teams' : 'ffa';
+        this.refreshHost();
+        break;
+      case 'o-public':
+        p.online.public = val === 'on';
+        this.refreshHost();
+        break;
+      case 'o-bots':
+        p.online.bots = clampBots(p.online.bots + Number(val));
+        this.refreshHost();
+        break;
+      case 'o-diff':
+        p.online.difficulty = val as Difficulty;
+        this.refreshHost();
+        break;
+      case 'host-go':
+        this.withConsent(() => this.h.online.host());
+        break;
+      case 'join':
+        this.withConsent(() => this.h.online.join(val));
+        break;
+      case 'code-go':
+        this.submitCode();
+        break;
+      case 'consent-ok': {
+        p.online.voiceOk = true;
+        this.save();
+        const next = this.afterConsent;
+        this.afterConsent = null;
+        if (next) next();
+        else this.show('online');
+        break;
+      }
+      case 'conn-cancel':
+        this.h.online.cancel();
+        break;
+      case 'l-level':
+      case 'l-mode':
+      case 'l-bots':
+      case 'l-diff':
+      case 'l-public':
+        this.lobbySetting(act, val);
+        break;
+      case 'l-start':
+        this.h.online.session()?.startRound();
+        break;
+      case 'mute':
+        this.h.online.session()?.toggleMute(val);
+        break;
+      case 'talk':
+        this.h.online.toggleTalk();
+        break;
+      case 'openmic':
+        this.h.online.session()?.setOpenMic(val === 'on');
+        this.save();
+        this.onlineChanged();
+        break;
+      case 'invite':
+        this.invite(el);
+        break;
+      case 'leave':
+        this.h.online.leave();
+        break;
+      case 'online-resume':
+        this.h.online.resumeFlight();
         break;
       case 'back':
         this.goBack();
@@ -270,6 +516,91 @@ export class Menu {
     }
   }
 
+  /** Shows the radio rules once before the first online game. */
+  private withConsent(next: () => void): void {
+    if (!this.profile.callsign) {
+      this.back = 'online';
+      this.show('callsign');
+      return;
+    }
+    if (this.profile.online.voiceOk) {
+      next();
+      return;
+    }
+    this.afterConsent = next;
+    this.show('consent');
+  }
+
+  private refreshHost(): void {
+    this.save();
+    const a = document.activeElement as HTMLElement | null;
+    const act = a?.dataset.act;
+    const val = a?.dataset.val;
+    const top = this.root.scrollTop;
+    this.root.innerHTML = this.render('host');
+    this.root.scrollTop = top;
+    if (act) (this.root.querySelector(`[data-act="${act}"][data-val="${val}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
+  }
+
+  private lobbySetting(act: string, val: string): void {
+    const s = this.h.online.session();
+    if (!s || !s.isHost) return;
+    const cur = s.match.settings;
+    if (act === 'l-level') s.setSettings({ level: val as LevelId });
+    else if (act === 'l-mode') s.setSettings({ mode: val === 'teams' ? 'teams' : 'ffa' });
+    else if (act === 'l-bots') s.setSettings({ bots: clampBots(cur.bots + Number(val)) });
+    else if (act === 'l-diff') s.setSettings({ difficulty: val as Difficulty });
+    else if (act === 'l-public') s.setPublic(val === 'on');
+    // Remember the choice for the next game this pilot hosts.
+    const o = this.profile.online;
+    const now = s.match.settings;
+    o.level = now.level;
+    o.mode = now.mode;
+    o.bots = now.bots;
+    o.difficulty = now.difficulty;
+    o.public = s.isPublic;
+    this.save();
+  }
+
+  private submitCode(): void {
+    const input = this.root.querySelector('#gamecode') as HTMLInputElement | null;
+    const err = this.root.querySelector('#code-error') as HTMLElement | null;
+    if (!input || !err) return;
+    const code = input.value.trim().toUpperCase();
+    if (!/^[A-Z0-9]{5}$/.test(code)) {
+      err.textContent = 'A game code has 5 letters or numbers.';
+      err.hidden = false;
+      input.focus();
+      return;
+    }
+    this.withConsent(() => this.h.online.join(code));
+  }
+
+  private invite(el: HTMLElement): void {
+    const s = this.h.online.session();
+    if (!s) return;
+    const url = s.inviteLink();
+    const done = (text: string) => {
+      el.firstChild && (el.firstChild.textContent = text);
+      window.setTimeout(() => {
+        if (el.isConnected && el.firstChild) el.firstChild.textContent = 'Invite with a link ';
+      }, 2500);
+    };
+    const nav = navigator as Navigator & { share?: (d: { title: string; text: string; url: string }) => Promise<void> };
+    if (this.h.online.touch() && nav.share) {
+      void nav.share({ title: 'iamSpacePilot', text: `Fly with me: game ${s.code}`, url }).catch(() => undefined);
+      return;
+    }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(
+        () => done('Link copied '),
+        () => done(`Code ${s.code} `),
+      );
+    } else {
+      done(`Code ${s.code} `);
+    }
+  }
+
   private settingsChanged(): void {
     this.save();
     this.h.settingsChanged();
@@ -296,7 +627,13 @@ export class Menu {
     }
     this.profile.callsign = input.value.trim();
     this.save();
-    this.show(this.back === 'settings' ? 'settings' : 'main');
+    if (this.pendingJoin) {
+      const code = this.pendingJoin;
+      this.pendingJoin = '';
+      this.joinFromLink(code);
+      return;
+    }
+    this.show(this.back === 'settings' ? 'settings' : this.back === 'online' ? 'online' : 'main');
   }
 
   private render(s: Screen): string {
@@ -312,11 +649,31 @@ export class Menu {
       case 'settings':
         return this.settingsScreen();
       case 'online':
-        return this.soonScreen(
-          'Online flights',
-          'Online is coming',
-          'Up to 8 pilots per match. Public or private rooms. Free-for-all or two teams of four. Live voice radio with everyone in the match.',
-        );
+        this.back = 'main';
+        return listScreen(this.listNotice);
+      case 'host':
+        this.back = 'online';
+        return hostScreen(this.profile.online);
+      case 'code':
+        this.back = 'online';
+        return codeScreen();
+      case 'consent':
+        this.back = 'online';
+        return consentScreen();
+      case 'connecting':
+        this.back = null;
+        return connectingScreen(this.connect.title, this.connect.text, this.connect.failed);
+      case 'lobby': {
+        this.back = null;
+        const sess = this.h.online.session();
+        this.lastNext = '';
+        return sess ? lobbyScreen(sess, this.profile.online, this.h.online.touch()) : listScreen('');
+      }
+      case 'online-pause': {
+        this.back = null;
+        const sess = this.h.online.session();
+        return sess ? onlinePauseScreen(sess) : listScreen('');
+      }
       case 'board':
         return this.boardScreen();
       case 'pause':
@@ -328,14 +685,10 @@ export class Menu {
     }
   }
 
-  private frame(inner: string, foot = ''): string {
-    return `<section class="m-screen"><div class="m-col">${inner}${foot ? `<div class="m-foot">${foot}</div>` : ''}</div>${ART}</section>`;
-  }
-
   private callsignScreen(): string {
     const first = !this.profile.callsign;
     this.back = first ? null : 'settings';
-    return this.frame(
+    return frame(
       `${wordmark()}
       <p class="m-kicker">${first ? 'Pilot registration' : 'Settings'}</p>
       <h2 class="m-title">Choose your callsign</h2>
@@ -355,17 +708,17 @@ export class Menu {
   private mainScreen(): string {
     this.back = null;
     const name = esc(this.profile.callsign || 'pilot');
-    return this.frame(
+    return frame(
       `${wordmark()}
       <p class="m-kicker">Welcome back, ${name}</p>
       <nav class="m-list" aria-label="Main menu">
         <button class="mi" data-act="go" data-val="solo">Solo flight ${ARROW}</button>
-        <button class="mi" data-act="go" data-val="online">Online <span class="tag">Soon</span></button>
+        <button class="mi wio" data-act="go" data-val="online">who is online? <span class="tag" id="wio-count"${this.onlineCount > 0 ? '' : ' hidden'}>${this.onlineCount > 0 ? `${this.onlineCount} online` : ''}</span></button>
         <button class="mi" data-act="go" data-val="board">Leaderboard ${ARROW}</button>
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span>Solo build · v0.3</span><span>Fly free. Leave light behind.</span>`,
+      `<span>v0.4 · Solo and online</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
@@ -386,7 +739,7 @@ export class Menu {
     const record = rec
       ? `Highscore on ${LEVELS[p.level].name}: ${top ? formatScore(top.score) : '–'} · ${rec.wins} ${rec.wins === 1 ? 'win' : 'wins'} in ${rec.flights} ${rec.flights === 1 ? 'flight' : 'flights'}`
       : `No flights on ${LEVELS[p.level].name} yet. Harder difficulty scores more: Rookie ×1, Pilot ×1.5, Ace ×2.`;
-    return this.frame(
+    return frame(
       `<p class="m-kicker">Solo flight</p>
       <h2 class="m-title">Last pilot flying wins</h2>
       <div>
@@ -410,7 +763,7 @@ export class Menu {
 
   private howtoScreen(): string {
     this.back = 'main';
-    return this.frame(
+    return frame(
       `<p class="m-kicker">How to fly</p>
       <h2 class="m-title">Stay in the air. Make them hit your wall.</h2>
       <p class="m-text">Your glider leaves a wall of light. Every wall is deadly, yours too. So are the arena shield and the floor below. The shield closes in after 30 seconds. The last pilot flying wins.</p>
@@ -436,7 +789,7 @@ export class Menu {
     const s = this.profile.settings;
     const seg = (act: string, items: [string, string][], cur: string) =>
       `<div class="seg">${items.map(([v, l]) => `<button data-act="${act}" data-val="${v}" aria-pressed="${cur === v}">${l}</button>`).join('')}</div>`;
-    return this.frame(
+    return frame(
       `<p class="m-kicker">Settings</p>
       <h2 class="m-title">Settings</h2>
       <div>
@@ -453,19 +806,9 @@ export class Menu {
     );
   }
 
-  private soonScreen(kicker: string, title: string, text: string): string {
-    this.back = 'main';
-    return this.frame(
-      `<p class="m-kicker">${kicker}</p>
-      <h2 class="m-title">${title}</h2>
-      <p class="m-text">${text}</p>
-      <div class="m-list"><button class="mi" data-act="back">Back ${ARROW}</button></div>`,
-    );
-  }
-
   private pauseScreen(): string {
     this.back = null;
-    return this.frame(
+    return frame(
       `<p class="m-kicker">${esc(LEVELS[this.profile.solo.level].name)}</p>
       <h2 class="m-title">Paused</h2>
       <div class="m-list">
@@ -494,7 +837,7 @@ export class Menu {
         : r.localRank > 0
           ? `${ordinal(r.localRank)} best on this device.`
           : `Not in this device's top ${LOCAL_TOP}.`;
-    return this.frame(
+    return frame(
       `<p class="m-kicker">${esc(r.level.name)} · ${sc.pilots} pilots · ${DIFFICULTY_LABEL[r.difficulty]}</p>
       <h2 class="m-title">${sc.won ? 'Last pilot flying' : 'Crashed'}</h2>
       <p class="m-text">${esc(r.cause)}</p>
@@ -536,7 +879,7 @@ export class Menu {
     const localTable = local.length
       ? `<div class="keys-wrap"><table class="keys board"><thead><tr><th>#</th><th>Score</th><th>Time</th><th>Result</th><th>Difficulty</th><th>Date</th></tr></thead><tbody>${localRows}</tbody></table></div>`
       : '<p class="m-hint">No flights on this level yet.</p>';
-    return this.frame(
+    return frame(
       `<p class="m-kicker">Leaderboard</p>
       <h2 class="m-title">Highscores</h2>
       <div class="seg">${tabs}</div>
@@ -564,7 +907,7 @@ export class Menu {
 
   private noGlScreen(): string {
     this.back = null;
-    return this.frame(
+    return frame(
       `${wordmark()}
       <h2 class="m-title">3D graphics are switched off</h2>
       <p class="m-text">This game needs WebGL. Every current browser supports it, but it can be turned off. Check that hardware acceleration is enabled in your browser settings, then reload the page.</p>`,

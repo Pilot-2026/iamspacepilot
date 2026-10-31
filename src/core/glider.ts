@@ -9,6 +9,10 @@ export interface Glider {
   readonly isBot: boolean;
   /** Auto-horizon assist: levels the glider slowly when the pilot is not rolling. */
   readonly assist: boolean;
+  /** Flown by another device in an online game: position and wall arrive over the network. */
+  remote: boolean;
+  /** Team number in team games, -1 otherwise. */
+  readonly team: number;
   alive: boolean;
   readonly p: V3;
   readonly pPrev: V3;

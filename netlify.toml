@@ -10,6 +10,8 @@
 
 # Online leaderboard: /api/score and /api/leaderboard (see server/).
 # They need FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY.
+# Online games and voice radio: /api/games and /api/game.
+# They need LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET.
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"

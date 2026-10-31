@@ -182,6 +182,15 @@ export class Sound {
     [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.14, t + i * 0.11));
   }
 
+  /** Radio squelch: a short burst of static and a beep, like a real radio keying up. */
+  radio(on: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    this.noiseBurst(0.07, 'bandpass', 2600, 1700, 0.09, t);
+    this.tone(on ? 1240 : 880, 0.07, 'square', 0.03, t + 0.03);
+  }
+
   private tone(freq: number, dur: number, type: OscillatorType, gain: number, when?: number, slideTo?: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;

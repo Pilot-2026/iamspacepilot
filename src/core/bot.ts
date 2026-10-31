@@ -78,6 +78,7 @@ export function botThink(w: World, i: number): void {
   for (const o of w.gliders) {
     if (!huntAllowed) break;
     if (o.id === i || !o.alive) continue;
+    if (w.teams && o.team === g.team) continue;
     const d2 = o.p.distSq(p);
     if (d2 >= bestD2) continue;
     // Never chase a pilot from behind: that means flying straight into its wall.

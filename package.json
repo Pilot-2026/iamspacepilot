@@ -1,7 +1,7 @@
 {
   "name": "iamspacepilot",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "iamSpacePilot: a 3D light-wall flying game for the browser.",
   "type": "module",
   "scripts": {
@@ -15,6 +15,7 @@
     "@fontsource/barlow": "5.2.5",
     "@fontsource/chakra-petch": "5.2.5",
     "@fontsource/unbounded": "5.2.5",
+    "livekit-client": "2.22.3",
     "three": "0.170.0"
   },
   "devDependencies": {

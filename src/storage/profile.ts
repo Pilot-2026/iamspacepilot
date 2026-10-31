@@ -32,6 +32,19 @@ export interface LocalScore {
   date: string;
 }
 
+/** What the pilot last chose when hosting an online game. */
+export interface OnlinePrefs {
+  level: LevelId;
+  mode: 'ffa' | 'teams';
+  public: boolean;
+  bots: number;
+  difficulty: Difficulty;
+  /** Agreed to the voice radio rules. */
+  voiceOk: boolean;
+  /** Microphone always open instead of push to talk. */
+  openMic: boolean;
+}
+
 export interface Profile {
   v: 1;
   callsign: string;
@@ -43,6 +56,7 @@ export interface Profile {
   unlocked: number;
   records: Partial<Record<LevelId, LevelRecord>>;
   highscores: Partial<Record<LevelId, LocalScore[]>>;
+  online: OnlinePrefs;
 }
 
 export const LOCAL_TOP = 10;
@@ -66,6 +80,7 @@ export function defaultProfile(): Profile {
     unlocked: 1,
     records: {},
     highscores: {},
+    online: { level: 'cloud-sea', mode: 'ffa', public: true, bots: 3, difficulty: 'pilot', voiceOk: false, openMic: false },
   };
 }
 
@@ -85,6 +100,7 @@ export function loadProfile(): Profile {
         solo: { ...base.solo, ...(stored.solo ?? {}) },
         records: { ...(stored.records ?? {}) },
         highscores: { ...(stored.highscores ?? {}) },
+        online: { ...base.online, ...(stored.online ?? {}) },
         v: 1,
       };
     }
@@ -101,6 +117,8 @@ export function loadProfile(): Profile {
   }
   p.unlocked = Math.max(1, Math.min(LEVEL_ORDER.length, open));
   if (!LEVELS[p.solo.level] || LEVELS[p.solo.level].index > p.unlocked) p.solo.level = 'cloud-sea';
+  if (!LEVELS[p.online.level]) p.online.level = 'cloud-sea';
+  p.online.bots = Math.max(0, Math.min(7, Number(p.online.bots) | 0));
   saveProfile(p);
   return p;
 }

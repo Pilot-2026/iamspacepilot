@@ -36,6 +36,22 @@ interface Burst {
   age: number;
 }
 
+/** Team games: warm colours for team 0, cool ones for team 1, taken from the level's palette. */
+function teamPalette(colors: number[], team: number): number[] {
+  const warm: number[] = [];
+  const cool: number[] = [];
+  const hsl = { h: 0, s: 0, l: 0 };
+  const c = new THREE.Color();
+  for (const v of colors) {
+    c.setHex(v).getHSL(hsl);
+    if (hsl.s < 0.3) continue;
+    const deg = hsl.h * 360;
+    (deg < 75 || deg >= 290 ? warm : cool).push(v);
+  }
+  const list = team === 0 ? warm : cool;
+  return list.length ? list : [team === 0 ? 0xffb02e : 0x3dd6ff];
+}
+
 let gliderGeometry: THREE.BufferGeometry | null = null;
 
 function gliderGeo(): THREE.BufferGeometry {
@@ -140,6 +156,8 @@ export class GameView {
   }
 
   colorOf(i: number): number {
+    const pv = this.pilots[i];
+    if (pv) return pv.color;
     const c = this.env?.colors ?? [0xffffff];
     return c[i % c.length];
   }
@@ -161,8 +179,13 @@ export class GameView {
     this.sun.intensity = env.sun[1];
     this.sun.position.copy(env.sun[2]).normalize().multiplyScalar(100);
 
+    const members = [0, 0];
     world.gliders.forEach((g, i) => {
-      const color = env.colors[i % env.colors.length];
+      let color = env.colors[i % env.colors.length];
+      if (world.teams && g.team >= 0) {
+        const list = teamPalette(env.colors, g.team);
+        color = list[members[g.team & 1]++ % list.length];
+      }
       const group = makeGlider(color);
       if (i === player) group.scale.setScalar(1.05);
       const ribbon = new RibbonView(color, env.wall);
@@ -215,14 +238,22 @@ export class GameView {
     if (!w) return;
     for (const e of events) {
       if (e.type === 'crash') {
-        const g = w.gliders[e.id];
-        this.spawnBurst(g.p.x, g.p.y, g.p.z, this.pilots[e.id].color);
-        this.pilots[e.id].ribbon.setDim(0.6);
-        if (e.id === this.player) this.shake = 1;
+        this.crashAt(e.id);
       } else if (e.type === 'bolt-strike') {
         this.flashLevel = 1;
       }
     }
+  }
+
+  /** Explosion and dimmed wall where glider id went down. */
+  crashAt(id: number): void {
+    const w = this.world;
+    const pv = this.pilots[id];
+    if (!w || !pv) return;
+    const g = w.gliders[id];
+    this.spawnBurst(g.p.x, g.p.y, g.p.z, pv.color);
+    pv.ribbon.setDim(0.6);
+    if (id === this.player) this.shake = 1;
   }
 
   render(alpha: number, dt: number): void {

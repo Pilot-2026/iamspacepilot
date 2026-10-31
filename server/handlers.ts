@@ -34,7 +34,7 @@ export function storeFromEnv(): Firestore | null {
   return cfg ? new Firestore(cfg) : null;
 }
 
-function json(status: number, body: unknown, headers: Record<string, string> = {}): Response {
+export function json(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers },
@@ -77,6 +77,18 @@ export function parseSubmission(body: unknown): Submission | string {
   };
 }
 
+/** Claims a callsign for the browser that holds this key. The first one to use a callsign owns it. */
+export async function claimCallsign(store: Store, callsign: string, key: string, now: Date): Promise<'ok' | 'taken'> {
+  const id = callsign.toLowerCase();
+  const keyHash = sha256(key);
+  let pilot = await store.get(`pilots/${id}`);
+  if (!pilot) {
+    const created = await store.create('pilots', id, { callsign, keyHash, created: now });
+    if (!created) pilot = await store.get(`pilots/${id}`);
+  }
+  return pilot && pilot.keyHash !== keyHash ? 'taken' : 'ok';
+}
+
 /** POST /api/score: replays the flight, then stores the pilot's best score. */
 export async function handleScore(req: Request, deps: Deps): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'method' });
@@ -102,13 +114,7 @@ export async function handleScore(req: Request, deps: Deps): Promise<Response> {
   const level = sub.setup.level;
   const now = (deps.now ?? (() => new Date()))();
   try {
-    const keyHash = sha256(sub.key);
-    let pilot = await store.get(`pilots/${id}`);
-    if (!pilot) {
-      const created = await store.create('pilots', id, { callsign: sub.callsign, keyHash, created: now });
-      if (!created) pilot = await store.get(`pilots/${id}`);
-    }
-    if (pilot && pilot.keyHash !== keyHash) return json(409, { error: 'callsign-taken' });
+    if ((await claimCallsign(store, sub.callsign, sub.key, now)) === 'taken') return json(409, { error: 'callsign-taken' });
 
     const col = `lb_${level}`;
     const prev = await store.get(`${col}/${id}`);
@@ -197,23 +203,34 @@ export async function handleLeaderboard(req: Request, deps: Deps): Promise<Respo
  * GET /api/health: tells whether the online leaderboard is set up, without
  * revealing any secret. Open it in a browser to check the Firebase settings.
  */
-export async function handleHealth(deps: Deps): Promise<Response> {
+export async function handleHealth(deps: Deps, liveKit?: { listRooms(): Promise<unknown[]> } | null): Promise<Response> {
+  const result: Record<string, unknown> = {};
   const store = deps.store;
   if (!store) {
-    return json(200, {
+    Object.assign(result, {
       configured: false,
       reachable: false,
       hint: 'Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in Netlify, then deploy again.',
     });
+  } else {
+    try {
+      await store.top('lb_cloud-sea', 'score', 1);
+      Object.assign(result, { configured: true, reachable: true });
+    } catch (e) {
+      Object.assign(result, { configured: true, reachable: false, error: e instanceof StoreError ? e.message : 'Unknown error' });
+    }
   }
-  try {
-    await store.top('lb_cloud-sea', 'score', 1);
-    return json(200, { configured: true, reachable: true });
-  } catch (e) {
-    return json(200, {
-      configured: true,
-      reachable: false,
-      error: e instanceof StoreError ? e.message : 'Unknown error',
-    });
+  if (liveKit !== undefined) {
+    if (!liveKit) {
+      result.livekit = { configured: false, reachable: false, hint: 'Add LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET in Netlify, then deploy again.' };
+    } else {
+      try {
+        await liveKit.listRooms();
+        result.livekit = { configured: true, reachable: true };
+      } catch (e) {
+        result.livekit = { configured: true, reachable: false, error: e instanceof Error ? e.message : 'Unknown error' };
+      }
+    }
   }
+  return json(200, result);
 }
