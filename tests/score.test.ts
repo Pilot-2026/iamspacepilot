@@ -7,7 +7,7 @@ import { playerFinished, replaySolo, soloScore, soloWorldSetup, type SoloSetup }
 import type { PilotInput } from '../src/core/types';
 import { World } from '../src/core/world';
 import { Firestore, decodeFields, encodeFields, type Doc } from '../server/firestore';
-import { handleLeaderboard, handleScore, type Store } from '../server/handlers';
+import { handleHealth, handleLeaderboard, handleScore, type Store } from '../server/handlers';
 
 const setup: SoloSetup = { level: 'cloud-sea', seed: 4242, bots: 3, difficulty: 'pilot', assist: true };
 
@@ -176,6 +176,18 @@ describe('score API', () => {
     expect(body.rows[0]).toMatchObject({ callsign: 'Tester', score: run.score.score });
     const bad = await handleLeaderboard(new Request('https://example.test/api/leaderboard?level=moon'), { store });
     expect(bad.status).toBe(400);
+  });
+});
+
+describe('health check', () => {
+  it('reports a missing setup', async () => {
+    const body = await (await handleHealth({ store: null })).json();
+    expect(body).toMatchObject({ configured: false, reachable: false });
+  });
+
+  it('reports a working store', async () => {
+    const body = await (await handleHealth({ store: new MemoryStore() })).json();
+    expect(body).toMatchObject({ configured: true, reachable: true });
   });
 });
 
