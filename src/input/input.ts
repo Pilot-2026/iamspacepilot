@@ -37,6 +37,8 @@ export class InputManager {
     private readonly onCheat: () => void,
   ) {
     window.addEventListener('keydown', (e) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.code === 'Escape' || e.code === 'KeyP') {
         if (!e.repeat) this.onPauseKey();
         return;
@@ -60,6 +62,14 @@ export class InputManager {
     this.kx = 0;
     this.ky = 0;
     this.kr = 0;
+  }
+
+  /** Push to talk: T, or Y / d-pad up on a gamepad. */
+  talkHeld(): boolean {
+    if (this.keys.has('KeyT')) return true;
+    const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
+    for (const pad of pads) if (pad && (pad.buttons[3]?.pressed || pad.buttons[12]?.pressed)) return true;
+    return false;
   }
 
   private key(...codes: string[]): boolean {

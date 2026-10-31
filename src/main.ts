@@ -13,14 +13,18 @@ import { DT } from './core/config';
 import { ReplayRecorder, quantize } from './core/replay';
 import { LEVELS, LEVEL_ORDER, nextLevel } from './core/levels';
 import { liveScore, playerFinished, soloScore, soloWorldSetup, type SoloScore, type SoloSetup } from './core/solo';
-import type { CrashInfo, SimEvent } from './core/types';
+import { NEUTRAL_INPUT, type CrashInfo, type SimEvent } from './core/types';
 import { World } from './core/world';
 import { InputManager } from './input/input';
 import { fetchBoard, onlineErrorText, submitScore } from './net/api';
+import { gameErrorText, listGames } from './net/games';
+import type { RoundResult } from './online/match';
+import { OnlineSession, type SessionEvents } from './online/session';
 import { GameView } from './render/view';
 import { addLocalScore, loadProfile, saveProfile, type Profile } from './storage/profile';
 import { Hud } from './ui/hud';
 import { Menu, formatScore, type ResultInfo } from './ui/menu';
+import { TEAM_NAMES } from './ui/online-screens';
 import { TouchControls } from './ui/touch';
 
 const PLAYER = 0;
@@ -47,6 +51,20 @@ class App {
   private solo: SoloSetup | null = null;
   private recorder = new ReplayRecorder();
   private final: { score: SoloScore; ticks: number } | null = null;
+  /** Index of this device's glider in the current world. */
+  private local = PLAYER;
+  /** Online game in progress, or null in solo. */
+  private session: OnlineSession | null = null;
+  /** Counts join attempts, so a cancelled one is ignored when it finishes. */
+  private joining = 0;
+  /** Talk button in the lobby (toggle). */
+  private talkToggle = false;
+  private lastTalk = false;
+  /** Online: when the round results appear. */
+  private resultsAt = 0;
+  /** Online: keeps the game running while the tab is in the background. */
+  private bgTimer = 0;
+  private bgLast = 0;
 
   constructor() {
     const $ = (id: string) => document.getElementById(id) as HTMLElement;
@@ -67,6 +85,19 @@ class App {
         this.sound.click();
       },
       loadBoard: (level) => fetchBoard(level),
+      online: {
+        list: () => listGames(),
+        host: () => void this.goOnline(null),
+        join: (code) => void this.goOnline(code),
+        cancel: () => this.cancelOnline(),
+        session: () => this.session,
+        leave: () => this.leaveOnline(),
+        resumeFlight: () => this.resume(),
+        toggleTalk: () => {
+          this.talkToggle = !this.talkToggle;
+        },
+        touch: () => isTouchDevice(),
+      },
     });
 
     try {
@@ -76,9 +107,8 @@ class App {
     }
 
     window.addEventListener('resize', () => this.resize());
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden && this.state === 'playing') this.pause();
-    });
+    document.addEventListener('visibilitychange', () => this.visibilityChanged());
+    window.addEventListener('pagehide', () => this.session?.leave());
     // Touch can appear on hybrid laptops at any time.
     window.addEventListener('touchstart', () => {
       if (this.state === 'playing' && !this.touch.visible) {
@@ -91,6 +121,10 @@ class App {
     this.resize();
     if (!this.view) this.menu.show('nogl');
     else this.menu.show(this.profile.callsign ? 'main' : 'callsign');
+    // An invite link (?join=CODE) opens that game straight away.
+    const code = new URLSearchParams(location.search).get('join')?.toUpperCase() ?? '';
+    if (code) history.replaceState(null, '', location.pathname);
+    if (this.view && /^[A-Z0-9]{5}$/.test(code)) this.menu.joinFromLink(code);
     requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -125,9 +159,12 @@ class App {
     this.world = new World(soloWorldSetup(this.solo, p.callsign || 'You'));
     this.recorder = new ReplayRecorder();
     this.final = null;
+    this.local = PLAYER;
     this.view.load(this.world, PLAYER);
     const colors = this.world.gliders.map((_, i) => this.view!.colorOf(i));
     this.hud.setup(this.world, colors, PLAYER);
+    this.hud.setOnline(false);
+    this.touch.setTalk(false);
     this.menu.hide();
     this.hud.show();
     if (isTouchDevice()) this.touch.show();
@@ -154,6 +191,11 @@ class App {
     this.state = 'paused';
     this.input.capturing = false;
     this.touch.reset();
+    if (this.session) {
+      // Online the round goes on: only a menu opens over it.
+      this.menu.show('online-pause');
+      return;
+    }
     this.sound.suspend();
     this.menu.show('pause');
     this.releaseWakeLock();
@@ -166,8 +208,10 @@ class App {
     this.input.reset();
     this.input.capturing = true;
     this.touch.reset();
-    this.acc = 0;
-    this.last = performance.now();
+    if (!this.session) {
+      this.acc = 0;
+      this.last = performance.now();
+    }
     this.sound.resume();
     this.requestWakeLock();
   }
@@ -190,6 +234,10 @@ class App {
     const dt = Math.min((now - this.last) / 1000, 0.25);
     this.last = now;
     if (this.menu.visible) this.menu.pollGamepad();
+    if (this.session) {
+      this.frameOnline(now, dt);
+      return;
+    }
     const w = this.world;
     const view = this.view;
     if (!w || !view || (this.state !== 'playing' && this.state !== 'ending')) return;
@@ -239,7 +287,7 @@ class App {
           this.sound.shieldWarning();
           break;
         case 'ring':
-          if (e.id === PLAYER) {
+          if (e.id === this.local) {
             this.hud.message('Boost +', '', 0.6);
             this.sound.ring();
           }
@@ -249,9 +297,9 @@ class App {
           break;
         case 'crash': {
           const g = w.gliders[e.id];
-          this.sound.crash(e.id === PLAYER);
+          this.sound.crash(e.id === this.local);
           this.hud.feed(this.crashLine(w, g.name, e.id, e.crash));
-          if (e.id === PLAYER) {
+          if (e.id === this.local) {
             this.hud.message('Crashed', this.causeText(w, e.crash, true), 2);
             this.sound.stopEngine();
             this.touch.hide();
@@ -261,7 +309,7 @@ class App {
           break;
         }
         case 'over':
-          if (e.winner === PLAYER) {
+          if (e.winner === this.local) {
             this.hud.message('You win', 'Last pilot flying', 2.2);
             this.sound.win();
             this.endAt = performance.now() + 2600;
@@ -277,9 +325,9 @@ class App {
   private crashLine(w: World, name: string, id: number, c: CrashInfo): string {
     switch (c.kind) {
       case 'wall':
-        return c.by === id ? `${name} hit their own wall` : `${name} hit ${w.gliders[c.by].name}'s wall`;
+        return c.by === id ? `${name} hit their own wall` : `${name} hit ${w.gliders[c.by]?.name ?? 'a'}'s wall`;
       case 'collision':
-        return `${name} collided with ${w.gliders[c.by].name}`;
+        return `${name} collided with ${w.gliders[c.by]?.name ?? 'another glider'}`;
       case 'shield':
         return `${name} hit the shield`;
       case 'floor':
@@ -290,16 +338,22 @@ class App {
         return `${name} was struck by lightning`;
       case 'core':
         return `${name} flew into the core`;
+      case 'left':
+        return `${name} left the game`;
     }
   }
 
   private causeText(w: World, c: CrashInfo, short = false): string {
     switch (c.kind) {
-      case 'wall':
-        if (c.by === PLAYER) return short ? 'Your own wall' : 'You flew into your own wall.';
-        return short ? `${w.gliders[c.by].name}'s wall` : `You hit ${w.gliders[c.by].name}'s wall.`;
-      case 'collision':
-        return short ? `Collided with ${w.gliders[c.by].name}` : `You collided with ${w.gliders[c.by].name}.`;
+      case 'wall': {
+        if (c.by === this.local) return short ? 'Your own wall' : 'You flew into your own wall.';
+        const n = w.gliders[c.by]?.name ?? 'a pilot';
+        return short ? `${n}'s wall` : `You hit ${n}'s wall.`;
+      }
+      case 'collision': {
+        const n = w.gliders[c.by]?.name ?? 'another glider';
+        return short ? `Collided with ${n}` : `You collided with ${n}.`;
+      }
       case 'shield':
         return short ? 'Arena shield' : 'You hit the arena shield.';
       case 'floor':
@@ -310,6 +364,8 @@ class App {
         return short ? 'Lightning' : 'Lightning struck you.';
       case 'core':
         return short ? 'The core' : 'You flew into the core.';
+      case 'left':
+        return short ? 'Left the game' : 'You left the game.';
     }
   }
 
@@ -328,6 +384,7 @@ class App {
    * round is dropped without a score.
    */
   private cheat(): void {
+    if (this.session) return;
     if (this.state !== 'playing' && this.state !== 'paused' && this.state !== 'ending') return;
     const cur = this.profile.solo.level;
     const next = nextLevel(cur) ?? LEVEL_ORDER[0];
@@ -412,6 +469,243 @@ class App {
         this.menu.setOnlineStatus(`Your online best here is ${formatScore(res.best)}, #${res.rank} of all pilots.`);
       }
     });
+  }
+
+  // ---------- Online ----------
+
+  /** Hosts a new game (code null) or joins one. */
+  private async goOnline(code: string | null): Promise<void> {
+    if (!this.view || this.session) return;
+    this.sound.unlock();
+    const token = ++this.joining;
+    this.menu.connecting(code ? `Joining game ${code}` : 'Opening your game', 'Connecting to the radio…');
+    const res = await OnlineSession.open(this.profile, code, this.sessionEvents());
+    if (token !== this.joining) {
+      if (res.ok) res.session.leave();
+      return;
+    }
+    if (!res.ok) {
+      this.menu.connecting(code ? 'Could not join' : 'Could not open the game', gameErrorText(res.error), true);
+      return;
+    }
+    this.session = res.session;
+    this.talkToggle = false;
+    this.lastTalk = false;
+    this.menu.show('lobby');
+  }
+
+  private cancelOnline(): void {
+    this.joining++;
+    this.menu.showList();
+  }
+
+  private sessionEvents(): SessionEvents {
+    return {
+      lobby: () => this.menu.onlineChanged(),
+      radio: () => {
+        this.menu.radioChanged();
+        const s = this.session;
+        this.hud.radio(s ? s.speaking() : [], s ? s.talking : false);
+      },
+      keyed: () => this.sound.radio(true),
+      roundStart: (w, local) => this.startOnlineRound(w, local),
+      roundEnd: (r) => this.endOnlineRound(r),
+      crash: (id, crash) => this.onlineCrash(id, crash),
+      closed: (reason) => this.leaveOnline(reason),
+    };
+  }
+
+  private startOnlineRound(w: World, local: number): void {
+    const view = this.view;
+    if (!view || !this.session) return;
+    if (local < 0) {
+      // Joined just after the round was set up: fly the next one.
+      this.menu.onlineChanged();
+      return;
+    }
+    this.world = w;
+    this.local = local;
+    this.solo = null;
+    this.final = null;
+    view.load(w, local);
+    const colors = w.gliders.map((_, i) => view.colorOf(i));
+    this.hud.setup(w, colors, local);
+    this.hud.setOnline(true);
+    const s = this.session;
+    this.hud.radio(s.speaking(), s.talking);
+    this.menu.hide();
+    this.hud.show();
+    if (isTouchDevice()) this.touch.show();
+    else this.touch.hide();
+    this.touch.setTalk(true);
+    this.touch.setTalking(this.talkToggle);
+    this.touch.setSpectating(false);
+    this.hud.setTouch(this.touch.visible);
+    this.input.reset();
+    this.input.capturing = true;
+    this.acc = 0;
+    this.endAt = 0;
+    this.resultsAt = 0;
+    this.state = 'playing';
+    this.sound.resume();
+    this.sound.startEngine();
+    this.goFullscreen();
+    this.requestWakeLock();
+    const g = w.gliders[local];
+    if (w.teams) this.hud.message(`Team ${TEAM_NAMES[g.team] ?? ''}`, `Round ${s.match.round} · your team's walls let you through`, 2.2);
+    if (document.hidden) s.match.dropOut();
+  }
+
+  private onlineCrash(id: number, crash: CrashInfo): void {
+    const w = this.world;
+    if (!w || !this.view || w !== this.session?.match.world) return;
+    this.view.crashAt(id);
+    const g = w.gliders[id];
+    this.sound.crash(id === this.local);
+    this.hud.feed(this.crashLine(w, g.name, id, crash));
+    if (id === this.local) {
+      this.hud.message('Crashed', `${this.causeText(w, crash, true)} · watching the rest`, 2.4);
+      this.sound.stopEngine();
+      this.touch.setSpectating(true);
+    }
+  }
+
+  private endOnlineRound(r: RoundResult): void {
+    const w = this.world;
+    if (!w || w !== this.session?.match.world || this.state === 'menu') {
+      this.menu.onlineChanged();
+      return;
+    }
+    const me = r.local;
+    const won = me >= 0 && (r.team >= 0 ? r.pilots[me]?.team === r.team : r.winner === me);
+    if (won) {
+      this.hud.message(r.team >= 0 ? 'Your team wins' : 'You win', 'Last pilot flying', 2);
+      this.sound.win();
+    } else {
+      this.hud.message('Round over', '', 1.6);
+    }
+    this.resultsAt = performance.now() + 2200;
+  }
+
+  /** The yellow results screen; the next round starts from there. */
+  private showOnlineResults(): void {
+    this.resultsAt = 0;
+    this.state = 'menu';
+    this.input.capturing = false;
+    this.sound.stopEngine();
+    this.hud.hide();
+    this.touch.hide();
+    this.view?.clear();
+    this.world = null;
+    this.menu.show('lobby');
+    this.releaseWakeLock();
+  }
+
+  /** Leaves the online game, optionally telling why. */
+  private leaveOnline(notice = ''): void {
+    this.joining++;
+    const s = this.session;
+    this.session = null;
+    s?.leave();
+    window.clearInterval(this.bgTimer);
+    this.bgTimer = 0;
+    this.local = PLAYER;
+    this.state = 'menu';
+    this.input.capturing = false;
+    this.sound.stopEngine();
+    this.sound.resume();
+    this.hud.hide();
+    this.hud.setOnline(false);
+    this.touch.setTalk(false);
+    this.touch.hide();
+    this.view?.clear();
+    this.world = null;
+    this.resultsAt = 0;
+    this.endAt = 0;
+    this.menu.showList(notice);
+    this.releaseWakeLock();
+  }
+
+  /** Push to talk from the T key, a gamepad, the touch mic button or the lobby button. */
+  private updateTalk(): void {
+    const s = this.session;
+    if (!s) return;
+    if (this.state === 'menu' && this.touch.state.talk !== this.talkToggle) this.touch.setTalking(this.talkToggle);
+    const touchTalk = this.touch.visible && this.touch.state.talk;
+    if (this.state === 'playing') this.talkToggle = touchTalk;
+    const want = this.input.talkHeld() || this.talkToggle || touchTalk;
+    if (want === this.lastTalk) return;
+    this.lastTalk = want;
+    s.setTalking(want);
+    this.sound.radio(want);
+  }
+
+  private frameOnline(now: number, dt: number): void {
+    const s = this.session as OnlineSession;
+    this.updateTalk();
+    s.match.update();
+    this.menu.tick();
+    const w = this.world;
+    const view = this.view;
+    if (!w || !view || w !== s.match.world || this.state === 'menu') return;
+    this.stepOnline(dt, true);
+    view.render(this.acc / DT, dt);
+    const portrait = isTouchDevice() && window.innerHeight > window.innerWidth;
+    this.hud.update(w, this.local, dt, portrait, s.match.round);
+    const g = w.gliders[this.local];
+    if (g.alive && w.phase !== 'countdown') this.sound.updateEngine(g.speed, g.boosting, g.wallDist, this.hud.boundaryDist);
+    if (this.resultsAt && now >= this.resultsAt) this.showOnlineResults();
+  }
+
+  /** Advances the online round by the time that passed. Others keep flying, so ticks are never skipped. */
+  private stepOnline(dt: number, visible: boolean): void {
+    const s = this.session;
+    const w = this.world;
+    if (!s || !w || w !== s.match.world) return;
+    this.acc = Math.min(this.acc + dt, 5);
+    let steps = 0;
+    const max = visible ? 20 : 400;
+    while (this.acc >= DT && steps < max) {
+      const inp = this.state === 'playing' && visible ? quantize(this.input.sample(DT)) : NEUTRAL_INPUT;
+      if (visible) this.view?.capturePrev();
+      s.match.step(inp);
+      if (visible && s.match.world === w) {
+        const evs = w.events.filter((e) => e.type !== 'crash' && e.type !== 'over' && e.type !== 'ring');
+        if (evs.length) {
+          this.view?.handleEvents(evs);
+          this.onEvents(w, evs);
+        }
+      }
+      this.acc -= DT;
+      steps++;
+    }
+  }
+
+  /** Online the game cannot pause: in the background your glider drops out, the host keeps the round going. */
+  private visibilityChanged(): void {
+    const s = this.session;
+    if (!s) {
+      if (document.hidden && this.state === 'playing') this.pause();
+      return;
+    }
+    if (document.hidden) {
+      s.match.dropOut();
+      s.setTalking(false);
+      this.lastTalk = false;
+      this.bgLast = performance.now();
+      window.clearInterval(this.bgTimer);
+      this.bgTimer = window.setInterval(() => {
+        const now = performance.now();
+        const dt = (now - this.bgLast) / 1000;
+        this.bgLast = now;
+        s.match.update();
+        this.stepOnline(dt, false);
+      }, 250);
+    } else {
+      window.clearInterval(this.bgTimer);
+      this.bgTimer = 0;
+      this.last = performance.now();
+    }
   }
 
   private goFullscreen(): void {

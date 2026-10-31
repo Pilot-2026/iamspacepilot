@@ -24,7 +24,8 @@ export interface PilotInput {
 
 export const NEUTRAL_INPUT: Readonly<PilotInput> = { steerX: 0, steerY: 0, roll: 0, boost: false };
 
-export type CrashKind = 'wall' | 'shield' | 'floor' | 'ceiling' | 'collision' | 'lightning' | 'core';
+/** 'left': online pilot who left the game during the round. */
+export type CrashKind = 'wall' | 'shield' | 'floor' | 'ceiling' | 'collision' | 'lightning' | 'core' | 'left';
 
 export interface CrashInfo {
   kind: CrashKind;

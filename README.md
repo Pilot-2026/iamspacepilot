@@ -4,7 +4,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 
 **Play:** https://iamspacepilot.netlify.app
 
-## Status: solo build with highscores
+## Status: solo and online
 
 - Free flight (turn, pitch, roll). The light wall rolls with your glider: fly level and it stands upright, roll 90° and it lies flat, keep rolling and it twists into a spiral.
 - Ten levels, each with its own look, climbing from the sky into deep space: Cloud Sea, Storm Eye (lightning, updraft), Frost Heights, Jet Stream (wind), Aurora, Orbit, Moon Shadow, Ring World, Nebula (plasma bolts) and Lattice Core (a core that pulls you in). Win a level to open the next one.
@@ -16,6 +16,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 - The arena shield, floor and ceiling are drawn as a glowing grid that turns red and thick when you get close, with a distance warning and a warning tone.
 - Highscores: a score for every round, the top 10 on this device and an online leaderboard for all pilots.
 - Yellow menus, callsign, synthesized sound, installable as an app.
+- Online: up to 8 pilots per game, bots fill empty seats. Public or private games, free-for-all or two teams. **who is online?** on the start screen lists every public game; join one with a tap, with a 5-letter code or with an invite link. Live voice radio in every game (push to talk or open mic, mute any pilot).
 
 ## Score
 
@@ -30,6 +31,17 @@ Two Netlify Functions, backed by Firebase Firestore:
 
 They need three environment variables in Netlify: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` (from a Firebase service account key). Without them the game still works and keeps highscores on the device. Firestore collections: `pilots`, `lb_<level>`, `replays`. All access goes through the functions, so the Firestore security rules can stay locked.
 
+## Online games and voice radio
+
+Every online game is a LiveKit room named `g-<CODE>`. Game data travels as reliable data packets in that room, the voice radio as audio tracks in the same room.
+
+- `GET /api/games` lists the public games running right now and how many pilots are online.
+- `POST /api/game` hosts a game (creates the room), joins one by code (hands out a room token) or lets the host update the list entry.
+
+Each device flies its own glider and sends its position and new wall pieces about 20 times a second. The pilot who joined first is the host: it flies the bots, starts rounds, decides when a round is over and starts the next one 8 seconds later. If the host leaves, the next pilot takes over. Pilots who join during a round fly from the next one.
+
+The functions need three environment variables in Netlify, from a LiveKit Cloud project (Settings → Keys): `LIVEKIT_URL` (wss://…livekit.cloud), `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`. `/api/health` shows whether they are set and whether LiveKit answers.
+
 ## Controls
 
 | Action        | Keyboard            | Gamepad    | Touch            |
@@ -39,6 +51,7 @@ They need three environment variables in Netlify: `FIREBASE_PROJECT_ID`, `FIREBA
 | Roll          | Q / E               | LB / RB    | Roll buttons     |
 | Boost         | Space               | RT or A    | Boost button     |
 | Pause         | Esc or P            | Start      | II button        |
+| Talk (online) | Hold T              | Y or d-pad up | Mic button (tap on, tap off) |
 
 ## Develop
 
@@ -64,18 +77,19 @@ src/ui/       Yellow menus, flight HUD with radar, touch controls, styles.
 src/input/    Keyboard, gamepad and touch merged into one pilot input.
 src/audio/    All sounds made live with the Web Audio API.
 src/storage/  Callsign, settings, records and local highscores in this browser.
-src/net/      Calls to the online leaderboard.
-server/       Leaderboard logic and a small Firestore REST client for the functions.
-netlify/functions/  The two API endpoints.
-tests/        Simulation, replay and leaderboard tests.
+src/online/   Online match logic (independent of the network), LiveKit link, session.
+src/net/      Calls to the leaderboard and game list.
+server/       Leaderboard and game list logic, small Firestore and LiveKit REST clients.
+netlify/functions/  The API endpoints.
+tests/        Simulation, replay, leaderboard, online match and game list tests.
 ```
 
-The deterministic core is the groundwork for online play: the same code will run on the server, which lets it check records by replaying recorded inputs.
+The deterministic core runs on the server too, which lets it check records by replaying recorded inputs.
 
 ## Roadmap
 
 1. **Phase 1 (done):** solo flight, levels 1 and 2, bots, phone and PC controls, sound.
 2. **Phase 2 (started):** online leaderboard with verified scores (done). Next: daily challenge, ghost runs, pilot code to use a callsign on several devices.
-3. **Phase 3:** online matches with up to 8 pilots, public or private, free-for-all or two teams of four.
-4. **Phase 4:** live voice radio (LiveKit) with mute, block and report.
-5. **Phase 5:** rank ladder up to Space Pilot.
+3. **Phase 3 (done):** online matches with up to 8 pilots, public or private, free-for-all or two teams.
+4. **Phase 4 (done):** live voice radio (LiveKit) with push to talk and mute. Next: block and report.
+5. **Phase 5:** shots, rank ladder up to Space Pilot.

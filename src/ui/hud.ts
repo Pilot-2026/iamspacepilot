@@ -27,6 +27,8 @@ export class Hud {
   private readonly edges: Record<'l' | 'r' | 't' | 'b', HTMLElement>;
   private readonly hint: HTMLElement;
   private readonly alert: HTMLElement;
+  private readonly radioEl: HTMLElement;
+  private readonly scoreLabel: HTMLElement;
   /** Distance to the nearest arena boundary while flying, used for the warning sound. */
   boundaryDist = 1e9;
   private readonly ctx: CanvasRenderingContext2D | null;
@@ -48,7 +50,7 @@ export class Hud {
       </div>
       <div class="h-level"></div>
       <div class="h-tr">
-        <button class="h-score" type="button" aria-label="Score"><span class="h-k">Score</span><span class="h-v" data-k="score">0</span></button>
+        <button class="h-score" type="button" aria-label="Score"><span class="h-k" data-k="score-label">Score</span><span class="h-v" data-k="score">0</span></button>
         <span class="h-k">Pilots</span><span class="h-v" data-k="alive">0/0</span>
         <span class="h-k">Time</span><span class="h-v" data-k="time">0:00.0</span>
       </div>
@@ -57,6 +59,7 @@ export class Hud {
       <canvas class="h-radar" width="240" height="240" aria-hidden="true"></canvas>
       <button class="h-pause" type="button" aria-label="Pause">II</button>
       <div class="h-alert" hidden></div>
+      <div class="h-radio" aria-live="polite" hidden></div>
       <div class="h-hint" hidden>Turn your phone sideways for the best view</div>`;
     const q = <T extends HTMLElement>(sel: string) => root.querySelector(sel) as T;
     this.speed = q('[data-k="speed"]');
@@ -76,6 +79,8 @@ export class Hud {
     this.radar = q<HTMLCanvasElement>('.h-radar');
     this.hint = q('.h-hint');
     this.alert = q('.h-alert');
+    this.radioEl = q('.h-radio');
+    this.scoreLabel = q('[data-k="score-label"]');
     this.edges = { l: q('.h-edge.l'), r: q('.h-edge.r'), t: q('.h-edge.t'), b: q('.h-edge.b') };
     this.ctx = this.radar.getContext('2d');
     q('.h-pause').addEventListener('click', onPause);
@@ -93,6 +98,27 @@ export class Hud {
 
   show(): void {
     this.root.hidden = false;
+  }
+
+  /** Online rounds show the round number where solo shows the score. */
+  setOnline(on: boolean): void {
+    this.scoreLabel.textContent = on ? 'Round' : 'Score';
+    this.root.classList.toggle('online', on);
+    if (!on) this.radio([], false);
+  }
+
+  /** Who is talking on the radio right now, and whether your own mic is open. */
+  radio(speaking: string[], talking: boolean): void {
+    const lines: string[] = [];
+    if (talking) lines.push('<div class="r-me"><i></i>You are live</div>');
+    for (const n of speaking.slice(0, 4)) {
+      const d = document.createElement('span');
+      d.textContent = n;
+      lines.push(`<div><i></i>${d.innerHTML}</div>`);
+    }
+    const html = lines.join('');
+    if (this.radioEl.innerHTML !== html) this.radioEl.innerHTML = html;
+    this.radioEl.hidden = lines.length === 0;
   }
 
   /** Moves radar and feed out of the way of the thumbs. */

@@ -916,3 +916,321 @@ kbd {
   width: 56px;
   height: 56px;
 }
+
+/* ---------- Online ---------- */
+
+/* "who is online?" keeps its lower-case question. */
+.mi.wio {
+  text-transform: none;
+}
+
+.mi.wio .tag {
+  background: var(--ink);
+  color: var(--yellow);
+  border-color: var(--ink);
+  font-size: 13px;
+  padding: 6px 9px;
+}
+
+.mi.wio:hover .tag,
+.mi.wio:focus-visible .tag {
+  background: var(--yellow);
+  color: var(--ink);
+  border-color: var(--yellow);
+}
+
+.games {
+  display: grid;
+}
+
+.game {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 12px 0;
+  border-top: 2px solid var(--ink);
+}
+
+.games .game:last-child {
+  border-bottom: 2px solid var(--ink);
+}
+
+.g-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.g-host {
+  font: 800 18px/1.1 var(--f-display);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.g-meta {
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.g-state {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  font: 600 12px/1.2 var(--f-data);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: right;
+}
+
+.g-count {
+  font: 800 18px/1 var(--f-display);
+  letter-spacing: 0;
+}
+
+.g-join {
+  min-width: 92px;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (max-width: 480px) {
+  .game {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .g-state {
+    grid-column: 1;
+    justify-items: start;
+    text-align: left;
+  }
+  .g-join {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+  }
+}
+
+.m-points {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 8px;
+  font-size: 17px;
+  line-height: 1.5;
+  max-width: 58ch;
+}
+
+.m-wait {
+  display: flex;
+  gap: 8px;
+}
+
+.m-wait i {
+  width: 12px;
+  height: 12px;
+  background: var(--ink);
+  animation: wait 0.9s ease-in-out infinite;
+}
+
+.m-wait i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.m-wait i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes wait {
+  50% {
+    transform: translateY(-8px);
+    opacity: 0.4;
+  }
+}
+
+.m-input.code {
+  max-width: 240px;
+  font-size: 30px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.code-badge {
+  font: 800 17px/1 var(--f-display);
+  letter-spacing: 0.14em;
+  color: var(--ink);
+  padding: 3px 8px;
+  border: 2px solid var(--ink);
+}
+
+.pilots {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-bottom: 2px solid var(--ink);
+}
+
+.pilot {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 0;
+  border-top: 2px solid var(--ink);
+}
+
+.p-name {
+  font: 700 17px/1.2 var(--f-body);
+  overflow-wrap: anywhere;
+}
+
+.p-tags {
+  display: flex;
+  gap: 4px;
+}
+
+.p-wins,
+.p-mic {
+  font: 600 12px/1 var(--f-data);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.p-mic.live {
+  color: #8a0000;
+}
+
+.p-mute {
+  min-height: 38px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.p-mute[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--yellow);
+}
+
+.p-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 18px;
+}
+
+.p-wave i {
+  width: 4px;
+  height: 4px;
+  background: var(--ink-3);
+}
+
+.pilot.speaking .p-wave i {
+  background: var(--ink);
+  animation: wave 0.45s ease-in-out infinite alternate;
+}
+
+.pilot.speaking .p-wave i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.pilot.speaking .p-wave i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes wave {
+  from {
+    height: 4px;
+  }
+  to {
+    height: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pilot {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+  }
+  .p-tags,
+  .p-wins {
+    grid-column: 2;
+  }
+  .pilot > :last-child {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pilot.speaking .p-wave i {
+    animation: none;
+    height: 18px;
+  }
+  .m-wait i {
+    animation: none;
+  }
+}
+
+/* Radio in flight: who is talking right now. */
+.h-radio {
+  left: calc(16px + var(--safe-l));
+  top: 40%;
+  display: grid;
+  gap: 4px;
+  font: 600 13px/1 var(--f-data);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.h-radio div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(8, 6, 16, 0.55);
+  border-left: 3px solid #7dffb0;
+}
+
+.h-radio i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7dffb0;
+  box-shadow: 0 0 8px #7dffb0;
+  animation: blink 0.8s steps(2, end) infinite;
+}
+
+.h-radio .r-me {
+  border-left-color: #ff6b6b;
+}
+
+.h-radio .r-me i {
+  background: #ff6b6b;
+  box-shadow: 0 0 8px #ff6b6b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .h-radio i {
+    animation: none;
+  }
+}
+
+.t-talk {
+  right: calc(12px + min(160px, 40vh) + 12px + var(--safe-r));
+  top: calc(10px + var(--safe-t));
+  width: 52px;
+  height: 52px;
+}
+
+#on-pilots + .m-row {
+  border-top: 0;
+}
+
+#touch.spectating .t-stick,
+#touch.spectating .t-btn:not(.t-talk) {
+  display: none;
+}

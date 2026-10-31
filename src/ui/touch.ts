@@ -7,7 +7,12 @@ export interface TouchState {
   steerY: number;
   roll: number;
   boost: boolean;
+  /** Online: radio microphone open (tap to switch). */
+  talk: boolean;
 }
+
+const MIC_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
 
 const ROLL_LEFT_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v5h5"/></svg>';
@@ -17,7 +22,8 @@ const ROLL_RIGHT_ICON =
 type Hold = 'boost' | 'roll-l' | 'roll-r';
 
 export class TouchControls {
-  readonly state: TouchState = { steerX: 0, steerY: 0, roll: 0, boost: false };
+  readonly state: TouchState = { steerX: 0, steerY: 0, roll: 0, boost: false, talk: false };
+  private readonly talkBtn: HTMLElement;
   private readonly stick: HTMLElement;
   private readonly knob: HTMLElement;
   private readonly buttons: Record<Hold, HTMLElement>;
@@ -32,7 +38,9 @@ export class TouchControls {
       <div class="t-stick"><i class="t-knob"></i></div>
       <div class="t-btn t-roll-l" data-hold="roll-l" aria-label="Roll left">${ROLL_LEFT_ICON}</div>
       <div class="t-btn t-roll-r" data-hold="roll-r" aria-label="Roll right">${ROLL_RIGHT_ICON}</div>
-      <div class="t-btn t-boost" data-hold="boost">Boost</div>`;
+      <div class="t-btn t-boost" data-hold="boost">Boost</div>
+      <div class="t-btn t-talk" data-talk aria-label="Talk on the radio" hidden>${MIC_ICON}</div>`;
+    this.talkBtn = root.querySelector('.t-talk') as HTMLElement;
     this.stick = root.querySelector('.t-stick') as HTMLElement;
     this.knob = root.querySelector('.t-knob') as HTMLElement;
     this.buttons = {
@@ -56,6 +64,27 @@ export class TouchControls {
   hide(): void {
     this.root.hidden = true;
     this.reset();
+  }
+
+  /** Online games get a radio button. */
+  setTalk(on: boolean): void {
+    this.talkBtn.hidden = !on;
+    if (!on) this.setTalking(false);
+  }
+
+  setTalking(on: boolean): void {
+    this.state.talk = on;
+    this.talkBtn.classList.toggle('on', on);
+  }
+
+  /** After a crash only the radio button stays. */
+  setSpectating(on: boolean): void {
+    this.root.classList.toggle('spectating', on);
+    if (on) {
+      const talk = this.state.talk;
+      this.reset();
+      this.setTalking(talk);
+    }
   }
 
   get visible(): boolean {
@@ -84,6 +113,10 @@ export class TouchControls {
 
   private down(e: PointerEvent): void {
     e.preventDefault();
+    if ((e.target as HTMLElement).closest('[data-talk]')) {
+      this.setTalking(!this.state.talk);
+      return;
+    }
     const target = (e.target as HTMLElement).closest('[data-hold]') as HTMLElement | null;
     try {
       this.root.setPointerCapture(e.pointerId);

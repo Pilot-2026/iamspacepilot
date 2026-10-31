@@ -17,7 +17,7 @@ import {
 } from './config';
 import { integrateGlider, tailPoint, type Glider } from './glider';
 import { LEVELS, type LevelSpec } from './levels';
-import { AXIS_LEFT, AXIS_UP, Quat, TWO_PI, V3, dcos, dsin } from './math';
+import { AXIS_FWD, AXIS_LEFT, AXIS_UP, Quat, TWO_PI, V3, dcos, dsin } from './math';
 import { Rng } from './rng';
 import { SEG_SHIFT, SpatialHash, Trail, quadCorners, segQuad, segSegDistSq, segmentBounds, wallDistSq } from './trail';
 import { NEUTRAL_INPUT, type CrashInfo, type Difficulty, type LevelId, type Phase, type PilotInput, type SimEvent } from './types';
@@ -27,12 +27,34 @@ export interface PilotSetup {
   isBot: boolean;
   assist: boolean;
   skill: Difficulty;
+  /** Online: this glider is flown by another device. */
+  remote?: boolean;
+  /** Team number in team games. */
+  team?: number;
 }
 
 export interface WorldSetup {
   level: LevelId;
   seed: number;
   pilots: PilotSetup[];
+  /** Online game: no boost rings, lightning from its own random stream so every device sees the same bolts. */
+  online?: boolean;
+  /** Team game: your team's walls do not hurt you, the last team flying wins. */
+  teams?: boolean;
+}
+
+/** State of a remote glider as sent over the network. */
+export interface RemoteState {
+  px: number;
+  py: number;
+  pz: number;
+  qx: number;
+  qy: number;
+  qz: number;
+  qw: number;
+  speed: number;
+  energy: number;
+  boosting: boolean;
 }
 
 export const RING_RADIUS = 7;
@@ -58,6 +80,17 @@ const tmpA = new V3();
 const tmpB = new V3();
 const tmpNear = new V3();
 
+/** Share of the gap to the latest network position a remote glider closes each tick. */
+const REMOTE_BLEND = 0.18;
+/** Further off than this, a remote glider jumps straight to its network position. */
+const REMOTE_SNAP = 15;
+
+/** Latest network state of a remote glider, flown on straight between updates. */
+interface NetTarget {
+  readonly p: V3;
+  readonly q: Quat;
+}
+
 /**
  * The whole game state. step() advances it by exactly one tick (1/60 s).
  * Same setup + same inputs = same result on every device.
@@ -76,12 +109,18 @@ export class World {
   flyTicks = 0;
   phase: Phase = 'countdown';
   winner = -1;
+  /** Winning team in team games, -1 otherwise. */
+  winnerTeam = -1;
+  readonly online: boolean;
+  readonly teams: boolean;
+  private readonly boltRng: Rng;
   /** Tick on which the round ended, -1 while it is still running. */
   overTick = -1;
 
   private nextBoltFly = 4 * TICK_RATE;
   private boltSeq = 0;
   private shrinkAnnounced = false;
+  private readonly net: (NetTarget | null)[] = [];
   private readonly cand = new Set<number>();
   private readonly corners = new Float64Array(12);
   private readonly bounds = new Float64Array(6);
@@ -89,6 +128,9 @@ export class World {
   constructor(setup: WorldSetup) {
     this.spec = LEVELS[setup.level];
     this.rng = new Rng(setup.seed);
+    this.boltRng = new Rng((setup.seed ^ 0x5bd1e995) >>> 0);
+    this.online = !!setup.online;
+    this.teams = !!setup.teams;
     const n = setup.pilots.length;
     const rs = this.spec.arena.radius * 0.55;
     const left = new V3();
@@ -110,6 +152,8 @@ export class World {
         name: ps.name,
         isBot: ps.isBot,
         assist: ps.assist,
+        remote: !!ps.remote,
+        team: this.teams ? (ps.team ?? 0) : -1,
         alive: true,
         p,
         pPrev: p.clone(),
@@ -126,12 +170,12 @@ export class World {
         wallDist: 1e9,
         near: new V3(),
         hasNear: false,
-        brain: ps.isBot ? makeBrain(ps.skill, i) : null,
+        brain: ps.isBot && !ps.remote ? makeBrain(ps.skill, i) : null,
         input: { steerX: 0, steerY: 0, roll: 0, boost: false },
       });
       this.trails.push(new Trail());
     });
-    for (let k = 0; k < this.spec.rings; k++) {
+    for (let k = 0; k < (this.online ? 0 : this.spec.rings); k++) {
       const ring: Ring = { active: true, c: new V3(), n: new V3(1, 0, 0), respawnTick: 0 };
       this.placeRing(ring);
       this.rings.push(ring);
@@ -179,6 +223,10 @@ export class World {
 
     for (const g of gl) {
       if (!g.alive) continue;
+      if (g.remote) {
+        this.flyRemote(g);
+        continue;
+      }
       const inp = g.brain ? g.brain.input : (inputs[g.id] ?? NEUTRAL_INPUT);
       integrateGlider(g, inp);
       const up = spec.updraft;
@@ -200,14 +248,14 @@ export class World {
     }
 
     if (this.flyTicks % SAMPLE_TICKS === 0) {
-      for (const g of gl) if (g.alive) this.addSample(g);
+      for (const g of gl) if (g.alive && !g.remote) this.addSample(g);
     }
 
     if (spec.lightning) this.updateBolts(R);
 
     const pending: { id: number; crash: CrashInfo }[] = [];
     for (const g of gl) {
-      if (!g.alive) continue;
+      if (!g.alive || g.remote) continue;
       const c = this.collide(g, R);
       if (c) pending.push({ id: g.id, crash: c });
     }
@@ -218,25 +266,150 @@ export class World {
       for (let j = i + 1; j < gl.length; j++) {
         const b = gl[j];
         if (!b.alive || a.p.distSq(b.p) > hit2) continue;
-        if (!pending.some((x) => x.id === a.id)) pending.push({ id: a.id, crash: { kind: 'collision', by: b.id, seg: -1 } });
-        if (!pending.some((x) => x.id === b.id)) pending.push({ id: b.id, crash: { kind: 'collision', by: a.id, seg: -1 } });
+        if (this.teams && a.team === b.team) continue;
+        // Each device only decides about the gliders it flies itself.
+        if (!a.remote && !pending.some((x) => x.id === a.id)) pending.push({ id: a.id, crash: { kind: 'collision', by: b.id, seg: -1 } });
+        if (!b.remote && !pending.some((x) => x.id === b.id)) pending.push({ id: b.id, crash: { kind: 'collision', by: a.id, seg: -1 } });
       }
     }
     if (pending.length) this.applyCrashes(pending);
 
     this.updateRings();
 
-    if (this.phase === 'flying' && gl.length > 1 && this.aliveCount() <= 1) {
-      this.phase = 'over';
-      this.overTick = this.tick;
-      const w = gl.find((g) => g.alive);
-      this.winner = w ? w.id : -1;
-      if (w) w.place = 1;
-      this.events.push({ type: 'over', winner: this.winner });
-    }
+    if (this.phase === 'flying' && gl.length > 1 && this.roundDecided()) this.endRound();
 
     this.flyTicks++;
     this.tick++;
+  }
+
+  /** True when only one pilot (or one team) is left. */
+  roundDecided(): boolean {
+    if (!this.teams) return this.aliveCount() <= 1;
+    let team = -2;
+    for (const g of this.gliders) {
+      if (!g.alive) continue;
+      if (team === -2) team = g.team;
+      else if (g.team !== team) return false;
+    }
+    return true;
+  }
+
+  /** Ends the round now. The pilot (or team) still flying wins. */
+  endRound(): void {
+    if (this.phase === 'over') return;
+    this.phase = 'over';
+    this.overTick = this.tick;
+    const alive = this.gliders.filter((g) => g.alive);
+    if (this.teams) {
+      // Usually one team is left. If the round is cut short, the team with more gliders in the air wins.
+      const count = [0, 0];
+      for (const g of alive) count[g.team & 1]++;
+      this.winnerTeam = count[0] > count[1] ? 0 : count[1] > count[0] ? 1 : -1;
+      this.winner = alive.length === 1 ? alive[0].id : -1;
+      for (const g of alive) g.place = 1;
+    } else {
+      const w = alive.length === 1 ? alive[0] : null;
+      this.winner = w ? w.id : -1;
+      if (w) w.place = 1;
+    }
+    this.events.push({ type: 'over', winner: this.winner });
+  }
+
+  /** Online: latest position of a remote glider. The glider glides there over the next ticks. */
+  setRemoteState(id: number, s: RemoteState): void {
+    const g = this.gliders[id];
+    if (!g || !g.remote || !g.alive) return;
+    let t = this.net[id];
+    if (!t) {
+      t = { p: new V3(), q: new Quat() };
+      this.net[id] = t;
+    }
+    t.p.set(s.px, s.py, s.pz);
+    t.q.x = s.qx;
+    t.q.y = s.qy;
+    t.q.z = s.qz;
+    t.q.w = s.qw;
+    t.q.normalize();
+    g.speed = s.speed;
+    g.energy = s.energy;
+    g.boosting = s.boosting;
+    if (g.p.distSq(t.p) > REMOTE_SNAP * REMOTE_SNAP) {
+      g.p.copy(t.p);
+      g.pPrev.copy(t.p);
+      g.q.copy(t.q);
+      g.qb.copy(t.q);
+    }
+  }
+
+  /** One tick of a glider flown by another device: fly on straight and close in on the network position. */
+  private flyRemote(g: Glider): void {
+    g.pPrev.copy(g.p);
+    g.q.rotate(AXIS_FWD, tmpA);
+    g.p.addScaled(tmpA, g.speed * DT);
+    const t = this.net[g.id];
+    if (t) {
+      t.q.rotate(AXIS_FWD, tmpB);
+      t.p.addScaled(tmpB, g.speed * DT);
+      g.p.x += (t.p.x - g.p.x) * REMOTE_BLEND;
+      g.p.y += (t.p.y - g.p.y) * REMOTE_BLEND;
+      g.p.z += (t.p.z - g.p.z) * REMOTE_BLEND;
+      const q = g.q;
+      const sign = q.x * t.q.x + q.y * t.q.y + q.z * t.q.z + q.w * t.q.w < 0 ? -1 : 1;
+      q.x += (t.q.x * sign - q.x) * REMOTE_BLEND * 1.5;
+      q.y += (t.q.y * sign - q.y) * REMOTE_BLEND * 1.5;
+      q.z += (t.q.z * sign - q.z) * REMOTE_BLEND * 1.5;
+      q.w += (t.q.w * sign - q.w) * REMOTE_BLEND * 1.5;
+      q.normalize();
+    }
+    g.qb.copy(g.q);
+  }
+
+  /**
+   * Online: wall samples of a remote glider, as [x, y, z, ux, uy, uz] groups,
+   * starting at sample index start. Samples that are already known are skipped.
+   */
+  addRemoteSamples(id: number, start: number, data: readonly number[]): void {
+    const g = this.gliders[id];
+    if (!g || !g.remote) return;
+    const tr = this.trails[id];
+    for (let k = 0; k * 6 < data.length; k++) {
+      if (start + k < tr.count) continue;
+      if (tr.count >= SEG_SHIFT - 1) return;
+      const o = k * 6;
+      tmpA.set(data[o], data[o + 1], data[o + 2]);
+      tmpB.set(data[o + 3], data[o + 4], data[o + 5]);
+      tr.add(tmpA, tmpB, this.tick);
+      const n = tr.count;
+      if (n >= 2) {
+        const seg = n - 2;
+        const b = this.bounds;
+        segmentBounds(tr, seg, 0.1, b);
+        this.hash.insert(id * SEG_SHIFT + seg, b[0], b[1], b[2], b[3], b[4], b[5]);
+      }
+    }
+  }
+
+  /** Online: another device reports that one of its gliders crashed. */
+  remoteCrash(id: number, crash: CrashInfo): void {
+    const g = this.gliders[id];
+    if (!g || !g.alive) return;
+    this.applyCrashes([{ id, crash }]);
+  }
+
+  /** Online: this device takes over a bot that another device flew until now. */
+  takeOverBot(id: number, skill: Difficulty): void {
+    const g = this.gliders[id];
+    if (!g || !g.isBot || !g.remote) return;
+    const t = this.net[id];
+    if (t) {
+      g.p.copy(t.p);
+      g.q.copy(t.q);
+    }
+    g.qb.copy(g.q);
+    g.bank = 0;
+    this.net[id] = null;
+    g.remote = false;
+    g.brain = makeBrain(skill, id);
   }
 
   /** Distance along the unit direction d until a wall blocks the way (at most len). */
@@ -326,6 +499,8 @@ export class World {
       const newest = tr.count - 2;
       const own = owner === g.id;
       if (own && seg > newest - SELF_SKIP) continue;
+      // In team games your own team's walls let you through.
+      if (this.teams && this.gliders[owner].team === g.team) continue;
       quadCorners(tr, seg, c);
       let t = segQuad(o.x, o.y, o.z, dx, dy, dz, c);
       const t2 = segQuad(o.x + wx, o.y + wy, o.z + wz, dx, dy, dz, c);
@@ -438,10 +613,11 @@ export class World {
       if (b.strikeTick === this.tick) this.events.push({ type: 'bolt-strike', bolt: b.id });
     }
     if (this.flyTicks < this.nextBoltFly) return;
-    this.nextBoltFly = this.flyTicks + 150 + this.rng.int(180);
+    const rng = this.online ? this.boltRng : this.rng;
+    this.nextBoltFly = this.flyTicks + 150 + rng.int(180);
     const arena = this.spec.arena;
-    const a = this.rng.range(0, TWO_PI);
-    const r = Math.sqrt(this.rng.next()) * R * 0.85;
+    const a = rng.range(0, TWO_PI);
+    const r = Math.sqrt(rng.next()) * R * 0.85;
     let x = dcos(a) * r;
     let z = dsin(a) * r;
     const top = arena.ceilY + 12;
@@ -454,8 +630,8 @@ export class World {
       xs.push(x);
       ys.push(top + ((bottom - top) * k) / (N - 1));
       zs.push(z);
-      x += this.rng.range(-4, 4);
-      z += this.rng.range(-4, 4);
+      x += rng.range(-4, 4);
+      z += rng.range(-4, 4);
     }
     const bolt: Bolt = {
       id: this.boltSeq++,
