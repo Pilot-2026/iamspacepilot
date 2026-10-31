@@ -12,6 +12,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 - 1 to 7 bots in three difficulties (Rookie, Pilot, Ace).
 - The arena shield closes in after 30 seconds.
 - Boost: hold to speed up, refill it by flying close along walls or through rings.
+- Gun: shots fly straight through walls and only hit other gliders, curving a little towards a glider in front of them. Three hits bring a glider down, a ring repairs one hit, and the gun overheats when you hold the trigger too long. Bots shoot too, never at their own team.
 - Keyboard, gamepad and touch (floating stick, boost and roll buttons).
 - The arena shield, floor and ceiling are drawn as a glowing grid that turns red and thick when you get close, with a distance warning and a warning tone.
 - Highscores: a score for every round, the top 10 on this device and an online leaderboard for all pilots.
@@ -20,7 +21,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 
 ## Score
 
-Per round: 10 points per second in the air, 100 per pilot you outlast, 250 per pilot that hits your wall, 50 per ring, 500 for a win. The sum is multiplied by 1 (Rookie), 1.5 (Pilot) or 2 (Ace).
+Per round: 10 points per second in the air, 100 per pilot you outlast, 250 per pilot that hits your wall, 200 per pilot you shoot down, 25 per hit, 50 per ring, 500 for a win. The sum is multiplied by 1 (Rookie), 1.5 (Pilot) or 2 (Ace).
 
 ## Online leaderboard
 
@@ -50,6 +51,7 @@ The functions need three environment variables in Netlify, from a LiveKit Cloud 
 | Nose up, down | W / S or ↑ / ↓      | Left stick | Left thumb stick |
 | Roll          | Q / E               | LB / RB    | Roll buttons     |
 | Boost         | Space               | RT or A    | Boost button     |
+| Fire          | F or left click     | LT or X    | Fire button      |
 | Pause         | Esc or P            | Start      | II button        |
 | Talk (online) | Hold T              | Y or d-pad up | Mic button (tap on, tap off) |
 
@@ -92,4 +94,4 @@ The deterministic core runs on the server too, which lets it check records by re
 2. **Phase 2 (started):** online leaderboard with verified scores (done). Next: daily challenge, ghost runs, pilot code to use a callsign on several devices.
 3. **Phase 3 (done):** online matches with up to 8 pilots, public or private, free-for-all or two teams.
 4. **Phase 4 (done):** live voice radio (LiveKit) with push to talk and mute. Next: block and report.
-5. **Phase 5:** shots, rank ladder up to Space Pilot.
+5. **Phase 5:** shots (done), rank ladder up to Space Pilot.

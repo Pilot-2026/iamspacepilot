@@ -24,6 +24,12 @@ interface PilotView {
   qb: THREE.Quaternion;
 }
 
+interface ShotView {
+  core: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>;
+  glow: THREE.Sprite;
+  seen: boolean;
+}
+
 interface BoltView {
   mesh: THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>;
   glow: THREE.Sprite;
@@ -103,6 +109,9 @@ export class GameView {
   private pilots: PilotView[] = [];
   private ringViews: THREE.Group[] = [];
   private readonly boltViews = new Map<number, BoltView>();
+  private readonly shotViews = new Map<number, ShotView>();
+  private readonly shotGeo: THREE.CylinderGeometry;
+  private readonly reticle: THREE.Sprite;
   private bursts: Burst[] = [];
   private readonly dust: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
   private readonly dustPos: Float32Array;
@@ -123,6 +132,19 @@ export class GameView {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     this.scene.add(this.hemi, this.sun);
+
+    // Shots: a bright rod along +Z with a glow at its head.
+    this.shotGeo = new THREE.CylinderGeometry(0.16, 0.16, 5.2, 6, 1, true);
+    this.shotGeo.rotateX(Math.PI / 2);
+    this.shotGeo.translate(0, 0, -2.6);
+    // Aiming circle: where your shots go, drawn on top of everything.
+    this.reticle = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: sharedTextures().reticle, transparent: true, depthTest: false, depthWrite: false, fog: false, sizeAttenuation: false, opacity: 0.8 }),
+    );
+    this.reticle.scale.set(0.05, 0.05, 1);
+    this.reticle.renderOrder = 999;
+    this.reticle.visible = false;
+    this.scene.add(this.reticle);
 
     const N = 320;
     this.dustPos = new Float32Array(N * 3);
@@ -239,10 +261,22 @@ export class GameView {
     for (const e of events) {
       if (e.type === 'crash') {
         this.crashAt(e.id);
+      } else if (e.type === 'hit') {
+        this.hitAt(e.id, e.by);
       } else if (e.type === 'bolt-strike') {
         this.flashLevel = 1;
       }
     }
+  }
+
+  /** Sparks where a shot hit glider id. */
+  hitAt(id: number, by: number): void {
+    const w = this.world;
+    const pv = this.pilots[id];
+    if (!w || !pv) return;
+    const g = w.gliders[id];
+    this.spawnBurst(g.p.x, g.p.y, g.p.z, this.pilots[by]?.color ?? 0xffffff, 0.3);
+    if (id === this.player) this.shake = Math.max(this.shake, 0.4);
   }
 
   /** Explosion and dimmed wall where glider id went down. */
@@ -290,8 +324,10 @@ export class GameView {
     });
 
     this.updateBolts(w);
+    this.updateShots(w, alpha);
     this.updateBursts(dt);
     this.updateCamera(w, dt);
+    this.updateReticle(w);
 
     const R = w.radius();
     env.shieldScale(R);
@@ -380,8 +416,63 @@ export class GameView {
     (this.dust.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }
 
-  private spawnBurst(x: number, y: number, z: number, color: number): void {
-    const N = 180;
+  private updateShots(w: World, alpha: number): void {
+    for (const v of this.shotViews.values()) v.seen = false;
+    for (const s of w.shots) {
+      if (!s.alive) continue;
+      let v = this.shotViews.get(s.key);
+      if (!v) {
+        const color = this.pilots[s.owner]?.color ?? 0xffffff;
+        const core = new THREE.Mesh(
+          this.shotGeo,
+          new THREE.MeshBasicMaterial({
+            color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.55),
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            fog: false,
+          }),
+        );
+        const glow = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: sharedTextures().glow, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
+        );
+        glow.scale.set(4.4, 4.4, 1);
+        this.scene.add(core, glow);
+        v = { core, glow, seen: true };
+        this.shotViews.set(s.key, v);
+      }
+      v.seen = true;
+      const p = this.tv.set(s.pPrev.x, s.pPrev.y, s.pPrev.z).lerp(this.tv2.set(s.p.x, s.p.y, s.p.z), alpha);
+      v.core.position.copy(p);
+      v.glow.position.copy(p);
+      v.core.quaternion.setFromUnitVectors(FWD, this.tv2.set(s.d.x, s.d.y, s.d.z));
+    }
+    for (const [key, v] of this.shotViews) {
+      if (v.seen) continue;
+      this.removeShot(v);
+      this.shotViews.delete(key);
+    }
+  }
+
+  private removeShot(v: ShotView): void {
+    this.scene.remove(v.core, v.glow);
+    v.core.material.dispose();
+    v.glow.material.dispose();
+  }
+
+  /** Puts the aiming circle where your shots fly. */
+  private updateReticle(w: World): void {
+    const g = w.gliders[this.player];
+    const pv = this.pilots[this.player];
+    const on = !!g && !!pv && g.alive && w.phase === 'flying';
+    this.reticle.visible = on;
+    if (!on) return;
+    this.reticle.position.copy(this.tv.copy(FWD).applyQuaternion(pv.q).multiplyScalar(70).add(pv.p));
+    this.reticle.material.color.setHex(g.overheated ? 0xff5050 : pv.color);
+  }
+
+  private spawnBurst(x: number, y: number, z: number, color: number, size = 1): void {
+    const N = Math.round(180 * size);
     const pos = new Float32Array(N * 3);
     const vel = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) {
@@ -392,7 +483,7 @@ export class GameView {
       let vy = Math.random() * 2 - 1;
       let vz = Math.random() * 2 - 1;
       const l = Math.hypot(vx, vy, vz) || 1;
-      const s = 6 + Math.random() * 22;
+      const s = (6 + Math.random() * 22) * (0.5 + size * 0.5);
       vx = (vx / l) * s;
       vy = (vy / l) * s;
       vz = (vz / l) * s;
@@ -418,7 +509,7 @@ export class GameView {
       new THREE.SpriteMaterial({ map: sharedTextures().glow, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
     );
     flash.position.set(x, y, z);
-    flash.scale.set(34, 34, 1);
+    flash.scale.set(34 * size, 34 * size, 1);
     this.scene.add(points, flash);
     this.bursts.push({ points, vel, flash, age: 0 });
   }
@@ -537,6 +628,9 @@ export class GameView {
       v.glow.material.dispose();
     }
     this.boltViews.clear();
+    for (const v of this.shotViews.values()) this.removeShot(v);
+    this.shotViews.clear();
+    this.reticle.visible = false;
     for (const b of this.bursts) {
       this.scene.remove(b.points, b.flash);
       b.points.geometry.dispose();

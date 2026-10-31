@@ -36,6 +36,10 @@ export type Msg =
   | { t: 'start'; round: number; level: LevelId; mode: Mode; seed: number; difficulty: Difficulty; pilots: NetPilot[] }
   | { t: 's'; r: number; g: number[]; w: number[] }
   | { t: 'c'; r: number; id: number; k: CrashKind; by: number }
+  /** Glider id fired shot k from p in direction d. */
+  | { t: 'f'; r: number; id: number; k: number; p: number[]; d: number[] }
+  /** Shot k of glider by hit glider id, which has hull hits left. */
+  | { t: 'h'; r: number; id: number; by: number; k: number; hull: number }
   | { t: 'end'; r: number; winner: number; team: number; places: number[] };
 
 export interface Peer {
@@ -77,7 +81,7 @@ export interface MatchCallbacks {
   onVersionMismatch(name: string): void;
 }
 
-const CRASH_KINDS: readonly CrashKind[] = ['wall', 'shield', 'floor', 'ceiling', 'collision', 'lightning', 'core', 'left'];
+const CRASH_KINDS: readonly CrashKind[] = ['wall', 'shield', 'floor', 'ceiling', 'collision', 'lightning', 'core', 'shot', 'left'];
 const finiteList = (a: unknown): a is number[] => Array.isArray(a) && a.every((v) => typeof v === 'number' && Number.isFinite(v));
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
@@ -270,9 +274,17 @@ export class OnlineMatch {
     if (this.local >= 0) inputs[this.local] = input;
     w.step(inputs);
     for (const e of w.events) {
-      if (e.type !== 'crash') continue;
-      if (this.owned.has(e.id)) this.t.send({ t: 'c', r: this.round, id: e.id, k: e.crash.kind, by: e.crash.by });
-      this.cb.onCrash(e.id, e.crash);
+      if (e.type === 'shot' && this.owned.has(e.id)) {
+        const shot = w.shots.find((x) => x.key === e.shot);
+        if (shot) {
+          this.t.send({ t: 'f', r: this.round, id: e.id, k: e.shot, p: [r3(shot.p.x), r3(shot.p.y), r3(shot.p.z)], d: [r4(shot.d.x), r4(shot.d.y), r4(shot.d.z)] });
+        }
+      } else if (e.type === 'hit' && this.owned.has(e.id)) {
+        this.t.send({ t: 'h', r: this.round, id: e.id, by: e.by, k: e.shot, hull: e.hull });
+      } else if (e.type === 'crash') {
+        if (this.owned.has(e.id)) this.t.send({ t: 'c', r: this.round, id: e.id, k: e.crash.kind, by: e.crash.by });
+        this.cb.onCrash(e.id, e.crash);
+      }
     }
     this.ticks++;
     if (this.ticks % 3 === 0) this.sendState();
@@ -400,12 +412,26 @@ export class OnlineMatch {
         if (!w || m.r !== this.round || this.owned.has(m.id) || this.ownerOf(m.id) !== from) return;
         const by = Number.isInteger(m.by) && m.by >= 0 && m.by < w.gliders.length ? m.by : -1;
         let kind: CrashKind = CRASH_KINDS.includes(m.k) ? m.k : 'shield';
-        if ((kind === 'wall' || kind === 'collision') && by < 0) kind = 'shield';
+        if ((kind === 'wall' || kind === 'collision' || kind === 'shot') && by < 0) kind = 'shield';
         const crash: CrashInfo = { kind, by, seg: -1 };
         if (w.gliders[m.id]?.alive) {
           w.remoteCrash(m.id, crash);
           this.cb.onCrash(m.id, crash);
         }
+        break;
+      }
+      case 'f': {
+        const w = this.world;
+        if (!w || m.r !== this.round || this.owned.has(m.id) || this.ownerOf(m.id) !== from) return;
+        if (!finiteList(m.p) || !finiteList(m.d) || m.p.length !== 3 || m.d.length !== 3 || !Number.isInteger(m.k)) return;
+        w.addRemoteShot(m.id, m.k, m.p[0], m.p[1], m.p[2], m.d[0], m.d[1], m.d[2]);
+        break;
+      }
+      case 'h': {
+        const w = this.world;
+        if (!w || m.r !== this.round || this.owned.has(m.id) || this.ownerOf(m.id) !== from) return;
+        if (!Number.isInteger(m.by) || !Number.isInteger(m.k) || !Number.isFinite(m.hull)) return;
+        w.remoteHit(m.id, m.by, m.k, m.hull);
         break;
       }
       case 'end':

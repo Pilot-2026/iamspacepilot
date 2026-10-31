@@ -29,6 +29,16 @@ export class Hud {
   private readonly alert: HTMLElement;
   private readonly radioEl: HTMLElement;
   private readonly scoreLabel: HTMLElement;
+  private readonly heat: HTMLElement;
+  private readonly heatFill: HTMLElement;
+  private readonly gunLabel: HTMLElement;
+  private readonly hullEl: HTMLElement;
+  private readonly hullPips: HTMLElement[];
+  private readonly hitMark: HTMLElement;
+  private hitUntil = 0;
+  private hurtUntil = 0;
+  /** Red flash on all edges after a hit, fades out. */
+  private damageFlash = 0;
   /** Distance to the nearest arena boundary while flying, used for the warning sound. */
   boundaryDist = 1e9;
   private readonly ctx: CanvasRenderingContext2D | null;
@@ -47,7 +57,9 @@ export class Hud {
       <div class="h-tl">
         <span class="h-k">Speed</span><span class="h-v" data-k="speed">0</span><span class="h-k">km/h</span>
         <div class="h-bar"><i></i></div><span class="h-k">Boost</span>
+        <div class="h-gun"><span class="h-hull" aria-label="Hull"><i></i><i></i><i></i></span><span class="h-bar h-heat"><i></i></span><span class="h-k" data-k="gun">Gun</span></div>
       </div>
+      <div class="h-hitmark" aria-hidden="true">Hit</div>
       <div class="h-level"></div>
       <div class="h-tr">
         <button class="h-score" type="button" aria-label="Score"><span class="h-k" data-k="score-label">Score</span><span class="h-v" data-k="score">0</span></button>
@@ -65,6 +77,12 @@ export class Hud {
     this.speed = q('[data-k="speed"]');
     this.bar = q('.h-bar');
     this.barFill = q('.h-bar i');
+    this.heat = q('.h-heat');
+    this.heatFill = q('.h-heat i');
+    this.gunLabel = q('[data-k="gun"]');
+    this.hullEl = q('.h-hull');
+    this.hullPips = Array.from(this.hullEl.querySelectorAll('i'));
+    this.hitMark = q('.h-hitmark');
     this.alive = q('[data-k="alive"]');
     this.score = q('[data-k="score"]');
     // Five taps on the score within 2.5 seconds: jump to the next level.
@@ -146,6 +164,20 @@ export class Hud {
     this.centerUntil = this.clock + seconds;
   }
 
+  /** Your shot hit someone. */
+  hitMarker(): void {
+    this.hitUntil = this.clock + 0.35;
+    this.hitMark.classList.remove('show');
+    void this.hitMark.offsetWidth;
+    this.hitMark.classList.add('show');
+  }
+
+  /** You were hit: red flash and the hull blinks. */
+  damage(): void {
+    this.damageFlash = 1;
+    this.hurtUntil = this.clock + 0.8;
+  }
+
   feed(text: string): void {
     const d = document.createElement('div');
     d.textContent = text;
@@ -174,6 +206,17 @@ export class Hud {
     }
     this.barFill.style.width = `${Math.round(g.energy * 100)}%`;
     this.bar.classList.toggle('boosting', g.boosting);
+    this.heatFill.style.width = `${Math.round(g.heat * 100)}%`;
+    this.heat.classList.toggle('hot', g.overheated);
+    const gun = g.overheated ? 'Gun hot' : 'Gun';
+    if (this.gunLabel.textContent !== gun) this.gunLabel.textContent = gun;
+    this.hullPips.forEach((pip, i) => pip.classList.toggle('on', i < g.hull));
+    this.hullEl.classList.toggle('hurt', this.clock < this.hurtUntil);
+    if (this.hitUntil && this.clock > this.hitUntil) {
+      this.hitMark.classList.remove('show');
+      this.hitUntil = 0;
+    }
+    this.damageFlash = Math.max(0, this.damageFlash - dt * 2.2);
     this.updateWarnings(world, player);
     this.drawRadar(world, player);
   }
@@ -229,10 +272,11 @@ export class Hud {
       const o = (Math.min(1, v) * 0.9).toFixed(2);
       if (el.style.opacity !== o) el.style.opacity = o;
     };
-    set(this.edges.l, l);
-    set(this.edges.r, r);
-    set(this.edges.t, t);
-    set(this.edges.b, b);
+    const f = this.damageFlash;
+    set(this.edges.l, Math.max(l, f));
+    set(this.edges.r, Math.max(r, f));
+    set(this.edges.t, Math.max(t, f));
+    set(this.edges.b, Math.max(b, f));
   }
 
   private drawRadar(world: World, player: number): void {

@@ -182,6 +182,40 @@ export class Sound {
     [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.14, t + i * 0.11));
   }
 
+  /** A shot leaves a gun. gain is lower for other gliders further away. */
+  shot(gain = 1): void {
+    const ctx = this.ctx;
+    if (!ctx || gain <= 0.01) return;
+    const t = ctx.currentTime;
+    this.tone(1650, 0.12, 'sawtooth', 0.06 * gain, t, 420);
+    this.noiseBurst(0.05, 'highpass', 3600, 2400, 0.035 * gain, t);
+  }
+
+  /** A shot hits a glider: loud when it is yours. */
+  hit(onMe: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    this.noiseBurst(0.2, 'bandpass', 2200, 500, onMe ? 0.42 : 0.16, t);
+    this.tone(190, 0.22, 'square', onMe ? 0.12 : 0.05, t, 80);
+  }
+
+  /** Your shot hit someone. */
+  hitConfirm(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    this.tone(1900, 0.05, 'square', 0.05, t);
+    this.tone(2550, 0.07, 'square', 0.05, t + 0.05);
+  }
+
+  overheat(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    this.tone(320, 0.4, 'sawtooth', 0.07, t, 110);
+  }
+
   /** Radio squelch: a short burst of static and a beep, like a real radio keying up. */
   radio(on: boolean): void {
     const ctx = this.ctx;

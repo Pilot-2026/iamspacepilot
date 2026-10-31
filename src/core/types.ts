@@ -20,12 +20,14 @@ export interface PilotInput {
   /** Positive rolls right. */
   roll: number;
   boost: boolean;
+  /** Fire the gun. Held down it keeps firing until the gun overheats. */
+  fire?: boolean;
 }
 
-export const NEUTRAL_INPUT: Readonly<PilotInput> = { steerX: 0, steerY: 0, roll: 0, boost: false };
+export const NEUTRAL_INPUT: Readonly<PilotInput> = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false };
 
-/** 'left': online pilot who left the game during the round. */
-export type CrashKind = 'wall' | 'shield' | 'floor' | 'ceiling' | 'collision' | 'lightning' | 'core' | 'left';
+/** 'shot': shot down by another glider. 'left': online pilot who left the game during the round. */
+export type CrashKind = 'wall' | 'shield' | 'floor' | 'ceiling' | 'collision' | 'lightning' | 'core' | 'shot' | 'left';
 
 export interface CrashInfo {
   kind: CrashKind;
@@ -40,6 +42,11 @@ export type SimEvent =
   | { type: 'go' }
   | { type: 'crash'; id: number; crash: CrashInfo }
   | { type: 'ring'; id: number; ring: number }
+  /** Glider id fired a shot. */
+  | { type: 'shot'; id: number; shot: number }
+  /** Glider id was hit by a shot of glider by; hull is what is left. */
+  | { type: 'hit'; id: number; by: number; shot: number; hull: number }
+  | { type: 'overheat'; id: number }
   | { type: 'bolt-warn'; bolt: number }
   | { type: 'bolt-strike'; bolt: number }
   | { type: 'shrink' }

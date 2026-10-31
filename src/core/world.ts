@@ -6,11 +6,13 @@ import {
   DT,
   FLIGHT,
   GLIDER_HIT_RADIUS,
+  GUN,
   HASH_CELL,
   QUERY_RADIUS,
   SAMPLE_TICKS,
   SELF_SKIP,
   SELF_SLIP_SKIP,
+  SHOT_KEY,
   TICK_RATE,
   WALL_HALF,
   WING_PROBE,
@@ -66,6 +68,19 @@ export interface Ring {
   respawnTick: number;
 }
 
+/** A shot from a glider's gun. */
+export interface Shot {
+  /** owner * SHOT_KEY + number: the same on every device. */
+  readonly key: number;
+  readonly owner: number;
+  readonly p: V3;
+  readonly pPrev: V3;
+  /** Unit direction. */
+  readonly d: V3;
+  readonly born: number;
+  alive: boolean;
+}
+
 export interface Bolt {
   readonly id: number;
   readonly x: number[];
@@ -102,8 +117,11 @@ export class World {
   readonly trails: Trail[] = [];
   readonly rings: Ring[] = [];
   readonly bolts: Bolt[] = [];
+  readonly shots: Shot[] = [];
   /** Events of the last step. */
   readonly events: SimEvent[] = [];
+  /** Online: events from the network, handed out with the next step. */
+  private readonly queued: SimEvent[] = [];
   readonly hash = new SpatialHash(HASH_CELL);
   tick = 0;
   flyTicks = 0;
@@ -167,11 +185,17 @@ export class World {
         crash: null,
         place: 0,
         rings: 0,
+        hull: GUN.hull,
+        heat: 0,
+        overheated: false,
+        lastShot: -1000,
+        shots: 0,
+        hits: 0,
         wallDist: 1e9,
         near: new V3(),
         hasNear: false,
         brain: ps.isBot && !ps.remote ? makeBrain(ps.skill, i) : null,
-        input: { steerX: 0, steerY: 0, roll: 0, boost: false },
+        input: { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false },
       });
       this.trails.push(new Trail());
     });
@@ -199,6 +223,10 @@ export class World {
   /** Advances the world by one tick. inputs[i] is used for human pilot i. */
   step(inputs: ReadonlyArray<PilotInput | undefined>): void {
     this.events.length = 0;
+    if (this.queued.length) {
+      this.events.push(...this.queued);
+      this.queued.length = 0;
+    }
     if (this.phase === 'countdown') {
       if (this.tick % TICK_RATE === 0) this.events.push({ type: 'count', n: 3 - this.tick / TICK_RATE });
       this.tick++;
@@ -229,6 +257,7 @@ export class World {
       }
       const inp = g.brain ? g.brain.input : (inputs[g.id] ?? NEUTRAL_INPUT);
       integrateGlider(g, inp);
+      this.gun(g, !!inp.fire);
       const up = spec.updraft;
       if (up) {
         const d2 = g.p.x * g.p.x + g.p.z * g.p.z;
@@ -259,6 +288,7 @@ export class World {
       const c = this.collide(g, R);
       if (c) pending.push({ id: g.id, crash: c });
     }
+    this.updateShots(R, pending);
     const hit2 = GLIDER_HIT_RADIUS * GLIDER_HIT_RADIUS;
     for (let i = 0; i < gl.length; i++) {
       const a = gl[i];
@@ -396,6 +426,27 @@ export class World {
     this.applyCrashes([{ id, crash }]);
   }
 
+  /** Online: a glider flown by another device fired a shot. */
+  addRemoteShot(owner: number, key: number, px: number, py: number, pz: number, dx: number, dy: number, dz: number): void {
+    const g = this.gliders[owner];
+    if (!g || !g.remote || this.shots.some((s) => s.key === key)) return;
+    const l = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (!(l > 0.5)) return;
+    this.spawnShot(owner, key, px, py, pz, dx / l, dy / l, dz / l);
+    this.queued.push({ type: 'shot', id: owner, shot: key });
+  }
+
+  /** Online: the device that flies glider id reports that a shot hit it. */
+  remoteHit(id: number, by: number, key: number, hull: number): void {
+    const g = this.gliders[id];
+    if (!g || !g.remote || !g.alive) return;
+    for (const s of this.shots) if (s.key === key) s.alive = false;
+    g.hull = hull < 0 ? 0 : hull > GUN.hull ? GUN.hull : hull;
+    const shooter = this.gliders[by];
+    if (shooter) shooter.hits++;
+    this.queued.push({ type: 'hit', id, by: shooter ? by : -1, shot: key, hull: g.hull });
+  }
+
   /** Online: this device takes over a bot that another device flew until now. */
   takeOverBot(id: number, skill: Difficulty): void {
     const g = this.gliders[id];
@@ -453,6 +504,116 @@ export class World {
       }
     }
     return best * len;
+  }
+
+  /** Cools the gun and fires while the trigger is held. */
+  private gun(g: Glider, fire: boolean): void {
+    if (g.heat > 0) {
+      g.heat -= GUN.cool * DT;
+      if (g.heat < 0) g.heat = 0;
+    }
+    if (g.overheated && g.heat <= GUN.unlock) g.overheated = false;
+    if (!fire || g.overheated || this.phase !== 'flying') return;
+    if (this.tick - g.lastShot < GUN.interval) return;
+    g.lastShot = this.tick;
+    g.heat += GUN.heatPerShot;
+    if (g.heat >= 1) {
+      g.heat = 1;
+      g.overheated = true;
+      this.events.push({ type: 'overheat', id: g.id });
+    }
+    g.q.rotate(AXIS_FWD, tmpA);
+    const key = g.id * SHOT_KEY + (g.shots++ % SHOT_KEY);
+    this.spawnShot(g.id, key, g.p.x + tmpA.x * GUN.muzzle, g.p.y + tmpA.y * GUN.muzzle, g.p.z + tmpA.z * GUN.muzzle, tmpA.x, tmpA.y, tmpA.z);
+    this.events.push({ type: 'shot', id: g.id, shot: key });
+  }
+
+  private spawnShot(owner: number, key: number, px: number, py: number, pz: number, dx: number, dy: number, dz: number): void {
+    const p = new V3(px, py, pz);
+    this.shots.push({ key, owner, p, pPrev: p.clone(), d: new V3(dx, dy, dz), born: this.tick, alive: true });
+  }
+
+  /**
+   * Moves the shots: they curve a little towards a glider in front of them,
+   * fly through walls and fizzle at the arena shield. A device only decides
+   * hits on the gliders it flies itself.
+   */
+  private updateShots(R: number, pending: { id: number; crash: CrashInfo }[]): void {
+    const arena = this.spec.arena;
+    const range2 = GUN.homingRange * GUN.homingRange;
+    const hit2 = GUN.hitRadius * GUN.hitRadius;
+    for (let k = this.shots.length - 1; k >= 0; k--) {
+      const s = this.shots[k];
+      if (!s.alive || this.tick - s.born > GUN.life) {
+        this.shots.splice(k, 1);
+        continue;
+      }
+      const ownerTeam = this.gliders[s.owner].team;
+      let best = -1;
+      let bestDot: number = GUN.homingCone;
+      for (const g of this.gliders) {
+        if (!g.alive || g.id === s.owner || (this.teams && g.team === ownerTeam)) continue;
+        let rx = g.p.x - s.p.x;
+        let ry = g.p.y - s.p.y;
+        let rz = g.p.z - s.p.z;
+        let d2 = rx * rx + ry * ry + rz * rz;
+        if (d2 > range2 || d2 < 1e-6) continue;
+        // Aim where the glider will be when the shot gets there.
+        const lead = (Math.sqrt(d2) / GUN.speed) * g.speed;
+        g.q.rotate(AXIS_FWD, tmpNear);
+        rx += tmpNear.x * lead;
+        ry += tmpNear.y * lead;
+        rz += tmpNear.z * lead;
+        d2 = rx * rx + ry * ry + rz * rz;
+        if (d2 < 1e-6) continue;
+        const inv = 1 / Math.sqrt(d2);
+        const dot = (rx * s.d.x + ry * s.d.y + rz * s.d.z) * inv;
+        if (dot > bestDot) {
+          bestDot = dot;
+          best = g.id;
+          tmpB.set(rx * inv, ry * inv, rz * inv);
+        }
+      }
+      if (best >= 0) {
+        s.d.x += (tmpB.x - s.d.x) * GUN.homing;
+        s.d.y += (tmpB.y - s.d.y) * GUN.homing;
+        s.d.z += (tmpB.z - s.d.z) * GUN.homing;
+        s.d.normalize();
+      }
+      s.pPrev.copy(s.p);
+      s.p.addScaled(s.d, GUN.speed * DT);
+      if (boundaryHit(arena, R, s.p)) {
+        s.alive = false;
+        continue;
+      }
+      // Closest approach of the shot's path in this tick to each glider it may hit.
+      const ax = s.pPrev.x;
+      const ay = s.pPrev.y;
+      const az = s.pPrev.z;
+      const bx = s.p.x - ax;
+      const by = s.p.y - ay;
+      const bz = s.p.z - az;
+      const len2 = bx * bx + by * by + bz * bz;
+      for (const g of this.gliders) {
+        if (!g.alive || g.remote || g.id === s.owner || (this.teams && g.team === ownerTeam)) continue;
+        const px = g.p.x - ax;
+        const py = g.p.y - ay;
+        const pz = g.p.z - az;
+        let t = len2 > 0 ? (px * bx + py * by + pz * bz) / len2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const dx = px - bx * t;
+        const dy = py - by * t;
+        const dz = pz - bz * t;
+        if (dx * dx + dy * dy + dz * dz > hit2) continue;
+        s.alive = false;
+        g.hull--;
+        g.energy = g.energy > GUN.energyHit ? g.energy - GUN.energyHit : 0;
+        this.gliders[s.owner].hits++;
+        this.events.push({ type: 'hit', id: g.id, by: s.owner, shot: s.key, hull: g.hull });
+        if (g.hull <= 0 && !pending.some((x) => x.id === g.id)) pending.push({ id: g.id, crash: { kind: 'shot', by: s.owner, seg: -1 } });
+        break;
+      }
+    }
   }
 
   private addSample(g: Glider): void {
@@ -596,6 +757,8 @@ export class World {
         if (ix * ix + iy * iy + iz * iz > r2) continue;
         const e = g.energy + FLIGHT.ringBoost;
         g.energy = e > 1 ? 1 : e;
+        // A ring also repairs one hit.
+        if (g.hull < GUN.hull) g.hull++;
         g.rings++;
         ring.active = false;
         ring.respawnTick = this.tick + 8 * TICK_RATE;

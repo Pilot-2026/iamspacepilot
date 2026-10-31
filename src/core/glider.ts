@@ -30,6 +30,18 @@ export interface Glider {
   place: number;
   /** Boost rings collected. */
   rings: number;
+  /** Hits the glider can still take. */
+  hull: number;
+  /** Gun heat from 0 to 1. */
+  heat: number;
+  /** The gun is locked until it has cooled down. */
+  overheated: boolean;
+  /** Tick of the last shot. */
+  lastShot: number;
+  /** Shots fired so far (numbers the shots). */
+  shots: number;
+  /** Hits landed on other gliders. */
+  hits: number;
   /** Distance to the nearest wall in range, or a large number. */
   wallDist: number;
   readonly near: V3;
@@ -56,6 +68,7 @@ export function integrateGlider(g: Glider, inp: PilotInput): void {
   g.input.steerY = sy;
   g.input.roll = sr;
   g.input.boost = inp.boost;
+  g.input.fire = !!inp.fire;
 
   // Turn right = rotate about local +Y by a negative angle.
   if (sx !== 0) g.qb.multiply(tq.setAxisAngle(0, 1, 0, -sx * FLIGHT.yawRate * DT));

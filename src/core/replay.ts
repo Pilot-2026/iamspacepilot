@@ -3,7 +3,7 @@ import type { PilotInput } from './types';
 /**
  * Flight recording: one input per tick. Inputs are rounded to steps of 1/100
  * before the simulation uses them, so a recording reproduces the flight exactly.
- * Encoding: runs of identical ticks as [count (varint), steerX, steerY, roll (int8), flags (uint8)].
+ * Encoding: runs of identical ticks as [count (varint), steerX, steerY, roll (int8), flags (uint8: 1 boost, 2 fire)].
  */
 
 export const MAX_REPLAY_TICKS = 60 * 60 * 10;
@@ -37,7 +37,7 @@ export class ReplayRecorder {
     this.x.push(q(inp.steerX));
     this.y.push(q(inp.steerY));
     this.r.push(q(inp.roll));
-    this.b.push(inp.boost ? 1 : 0);
+    this.b.push((inp.boost ? 1 : 0) | (inp.fire ? 2 : 0));
   }
 
   /** Base64 of the first `ticks` inputs. */
@@ -89,9 +89,9 @@ export function decodeReplay(data: string, maxTicks = MAX_REPLAY_TICKS): PilotIn
     const y = s8(bin.charCodeAt(i++));
     const r = s8(bin.charCodeAt(i++));
     const f = bin.charCodeAt(i++);
-    if (x < -100 || x > 100 || y < -100 || y > 100 || r < -100 || r > 100 || f > 1) return null;
+    if (x < -100 || x > 100 || y < -100 || y > 100 || r < -100 || r > 100 || f > 3) return null;
     if (inputs.length + count > maxTicks) return null;
-    const inp: PilotInput = { steerX: x / 100, steerY: y / 100, roll: r / 100, boost: f === 1 };
+    const inp: PilotInput = { steerX: x / 100, steerY: y / 100, roll: r / 100, boost: (f & 1) === 1, fire: (f & 2) === 2 };
     for (let k = 0; k < count; k++) inputs.push(inp);
   }
   return inputs;

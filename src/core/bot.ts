@@ -13,14 +13,25 @@ export interface BotBrain {
   aggression: number;
   /** Random wobble in decisions. */
   noise: number;
+  /** Fires when a pilot is within this cone in front (cos of the half angle)... */
+  aimCos: number;
+  /** ...with this chance per decision. */
+  fireRate: number;
+  /** Lets the gun cool below this heat before firing again. */
+  heatLimit: number;
   readonly input: PilotInput;
 }
 
-const SKILL: Record<Difficulty, { interval: number; look: number; aggression: number; noise: number }> = {
-  rookie: { interval: 9, look: 28, aggression: 0.15, noise: 1.0 },
-  pilot: { interval: 6, look: 36, aggression: 0.4, noise: 0.5 },
-  ace: { interval: 4, look: 44, aggression: 0.75, noise: 0.2 },
+const SKILL: Record<Difficulty, { interval: number; look: number; aggression: number; noise: number; aimCos: number; fireRate: number; heatLimit: number }> = {
+  rookie: { interval: 9, look: 28, aggression: 0.15, noise: 1.0, aimCos: 0.93, fireRate: 0.35, heatLimit: 0.45 },
+  pilot: { interval: 6, look: 36, aggression: 0.4, noise: 0.5, aimCos: 0.9, fireRate: 0.55, heatLimit: 0.6 },
+  ace: { interval: 4, look: 44, aggression: 0.75, noise: 0.2, aimCos: 0.88, fireRate: 0.75, heatLimit: 0.75 },
 };
+
+/** Bots hold fire for the first seconds of a round. */
+const BOT_FIRE_AFTER = 5;
+/** Bots only shoot at pilots closer than this. */
+const BOT_FIRE_RANGE = 110;
 
 export function makeBrain(skill: Difficulty, index: number): BotBrain {
   const s = SKILL[skill];
@@ -30,7 +41,10 @@ export function makeBrain(skill: Difficulty, index: number): BotBrain {
     look: s.look,
     aggression: s.aggression,
     noise: s.noise,
-    input: { steerX: 0, steerY: 0, roll: 0, boost: false },
+    aimCos: s.aimCos,
+    fireRate: s.fireRate,
+    heatLimit: s.heatLimit,
+    input: { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false },
   };
 }
 
@@ -153,6 +167,27 @@ export function botThink(w: World, i: number): void {
   }
   inp.roll = 0;
   inp.boost = fwdFree >= b.look - 1 && g.energy > 0.3 && (toAim ? aimDist < 60 : g.energy > 0.92);
+  inp.fire = wantsToFire(w, i, b);
+}
+
+/** Fires at a pilot in front, now and then, without letting the gun overheat. */
+function wantsToFire(w: World, i: number, b: BotBrain): boolean {
+  const g = w.gliders[i];
+  if (w.flyTime < BOT_FIRE_AFTER || g.overheated || g.heat > b.heatLimit) return false;
+  g.q.rotate(AXIS_FWD, tf);
+  const range2 = BOT_FIRE_RANGE * BOT_FIRE_RANGE;
+  for (const o of w.gliders) {
+    if (o.id === i || !o.alive || (w.teams && o.team === g.team)) continue;
+    const rx = o.p.x - g.p.x;
+    const ry = o.p.y - g.p.y;
+    const rz = o.p.z - g.p.z;
+    const d2 = rx * rx + ry * ry + rz * rz;
+    if (d2 > range2 || d2 < 1) continue;
+    const along = rx * tf.x + ry * tf.y + rz * tf.z;
+    if (along <= 0 || along * along < b.aimCos * b.aimCos * d2) continue;
+    return w.rng.next() < b.fireRate;
+  }
+  return false;
 }
 
 /** Free distance along the direction stored in d, limited by walls, bolts, gliders and the arena. */
