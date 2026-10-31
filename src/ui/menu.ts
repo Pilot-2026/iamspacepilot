@@ -6,6 +6,10 @@ import { LOCAL_TOP, saveProfile, validateCallsign, type Profile, type Quality } 
 
 export interface ResultInfo {
   score: SoloScore;
+  /** The level that comes next, if this one was won and there is one. */
+  next: LevelSpec | null;
+  /** True when this win just opened the next level. */
+  unlockedNow: boolean;
   difficulty: Difficulty;
   cause: string;
   level: LevelSpec;
@@ -17,6 +21,7 @@ export interface MenuHandlers {
   launch(): void;
   resume(): void;
   restart(): void;
+  next(): void;
   quit(): void;
   settingsChanged(): void;
   click(): void;
@@ -232,6 +237,9 @@ export class Menu {
       case 'restart':
         this.h.restart();
         break;
+      case 'next':
+        this.h.next();
+        break;
       case 'quit':
         this.h.quit();
         break;
@@ -357,7 +365,7 @@ export class Menu {
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span>Solo build · v0.2</span><span>Fly free. Leave light behind.</span>`,
+      `<span>Solo build · v0.3</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
@@ -366,9 +374,11 @@ export class Menu {
     const p = this.profile.solo;
     const rec = this.profile.records[p.level];
     const top = this.profile.highscores[p.level]?.[0];
+    const open = this.profile.unlocked;
     const levelButtons = LEVEL_ORDER.map((id) => {
       const L = LEVELS[id];
-      return `<button data-act="level" data-val="${id}" aria-pressed="${p.level === id}">${L.name} · ${L.altitude}</button>`;
+      const locked = L.index > open;
+      return `<button data-act="level" data-val="${id}" aria-pressed="${p.level === id}"${locked ? ' disabled' : ''}><span class="lv-n">${L.index}</span><span class="lv-name">${L.name}</span>${locked ? '<span class="lv-lock">Locked</span>' : `<span class="lv-alt">${L.altitude}</span>`}</button>`;
     }).join('');
     const diffButtons = (['rookie', 'pilot', 'ace'] as Difficulty[])
       .map((d) => `<button data-act="difficulty" data-val="${d}" aria-pressed="${p.difficulty === d}">${DIFFICULTY_LABEL[d]}</button>`)
@@ -380,7 +390,7 @@ export class Menu {
       `<p class="m-kicker">Solo flight</p>
       <h2 class="m-title">Last pilot flying wins</h2>
       <div>
-        <div class="m-row"><span class="lbl">Level</span><div class="seg">${levelButtons}</div></div>
+        <div class="m-row"><span class="lbl">Level</span><div class="levels-grid">${levelButtons}</div></div>
         <div class="m-row"><span class="lbl">Opponents</span>
           <div class="stepper">
             <button class="btn" data-act="bots" data-val="-1" aria-label="Fewer opponents">−</button>
@@ -390,7 +400,7 @@ export class Menu {
         </div>
         <div class="m-row"><span class="lbl">Difficulty</span><div class="seg">${diffButtons}</div></div>
       </div>
-      <p class="m-hint">${record}</p>
+      <p class="m-hint">${record} Win a level to open the next one (${open} of ${LEVEL_ORDER.length} open).</p>
       <div class="m-list">
         <button class="mi primary" data-act="launch" data-focus>Launch</button>
         <button class="mi" data-act="back">Back ${ARROW}</button>
@@ -495,8 +505,15 @@ export class Menu {
       </dl>
       <p class="m-hint">(${parts.join(' + ')}) × ${factor} for ${DIFFICULTY_LABEL[r.difficulty]}</p>
       <p class="m-text"><strong>${local}</strong> <span id="online-status">${esc(this.onlineStatus)}</span></p>
+      ${sc.won && r.unlockedNow && r.next ? `<p class="m-text"><strong>Level ${r.next.index} is open: ${esc(r.next.name)}.</strong></p>` : ''}
+      ${sc.won && !r.next ? '<p class="m-text"><strong>You beat all ten levels. You are a Space Pilot.</strong></p>' : ''}
       <div class="m-list">
-        <button class="mi primary" data-act="restart" data-focus>Fly again</button>
+        ${
+          sc.won && r.next
+            ? `<button class="mi primary" data-act="next" data-focus>Next: ${esc(r.next.name)}</button>
+        <button class="mi" data-act="restart">Fly again ${ARROW}</button>`
+            : '<button class="mi primary" data-act="restart" data-focus>Fly again</button>'
+        }
         <button class="mi" data-act="board">Leaderboard ${ARROW}</button>
         <button class="mi" data-act="quit">Main menu ${ARROW}</button>
       </div>`,

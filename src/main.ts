@@ -11,7 +11,8 @@ import './ui/styles.css';
 import { Sound } from './audio/sound';
 import { DT } from './core/config';
 import { ReplayRecorder, quantize } from './core/replay';
-import { playerFinished, soloScore, soloWorldSetup, type SoloScore, type SoloSetup } from './core/solo';
+import { LEVELS, LEVEL_ORDER, nextLevel } from './core/levels';
+import { liveScore, playerFinished, soloScore, soloWorldSetup, type SoloScore, type SoloSetup } from './core/solo';
 import type { CrashInfo, SimEvent } from './core/types';
 import { World } from './core/world';
 import { InputManager } from './input/input';
@@ -51,13 +52,14 @@ class App {
     const $ = (id: string) => document.getElementById(id) as HTMLElement;
     this.touch = new TouchControls($('touch'));
     this.touch.hide();
-    this.hud = new Hud($('hud'), () => this.pause());
+    this.hud = new Hud($('hud'), () => this.pause(), () => this.cheat());
     this.hud.hide();
-    this.input = new InputManager(this.touch, () => this.togglePause());
+    this.input = new InputManager(this.touch, () => this.togglePause(), () => this.cheat());
     this.menu = new Menu($('menu'), this.profile, {
       launch: () => this.launch(),
       resume: () => this.resume(),
       restart: () => this.launch(),
+      next: () => this.goNext(),
       quit: () => this.quit(),
       settingsChanged: () => this.applySettings(),
       click: () => {
@@ -214,7 +216,7 @@ class App {
 
     view.render(this.acc / DT, dt);
     const portrait = isTouchDevice() && window.innerHeight > window.innerWidth;
-    this.hud.update(w, PLAYER, dt, portrait);
+    this.hud.update(w, PLAYER, dt, portrait, this.solo ? liveScore(w, PLAYER, this.solo.difficulty) : 0);
     const g = w.gliders[PLAYER];
     if (g.alive && w.phase !== 'countdown') this.sound.updateEngine(g.speed, g.boosting, g.wallDist, this.hud.boundaryDist);
 
@@ -283,9 +285,11 @@ class App {
       case 'floor':
         return `${name} fell into ${w.spec.floorName}`;
       case 'ceiling':
-        return `${name} hit the storm ceiling`;
+        return `${name} hit the ceiling`;
       case 'lightning':
         return `${name} was struck by lightning`;
+      case 'core':
+        return `${name} flew into the core`;
     }
   }
 
@@ -301,10 +305,39 @@ class App {
       case 'floor':
         return short ? `Into ${w.spec.floorName}` : `You fell into ${w.spec.floorName}.`;
       case 'ceiling':
-        return short ? 'Storm ceiling' : 'You hit the storm ceiling.';
+        return short ? 'Ceiling' : 'You hit the ceiling.';
       case 'lightning':
         return short ? 'Lightning' : 'Lightning struck you.';
+      case 'core':
+        return short ? 'The core' : 'You flew into the core.';
     }
+  }
+
+  /** Starts the level after the current one. */
+  private goNext(): void {
+    const next = nextLevel(this.profile.solo.level);
+    if (!next) return;
+    this.profile.solo.level = next;
+    saveProfile(this.profile);
+    this.launch();
+  }
+
+  /**
+   * Cheat: press 1 five times, or tap the score five times, to jump straight
+   * to the next level (after the last one back to the first). The current
+   * round is dropped without a score.
+   */
+  private cheat(): void {
+    if (this.state !== 'playing' && this.state !== 'paused' && this.state !== 'ending') return;
+    const cur = this.profile.solo.level;
+    const next = nextLevel(cur) ?? LEVEL_ORDER[0];
+    this.profile.unlocked = Math.max(this.profile.unlocked, LEVELS[next].index);
+    this.profile.solo.level = next;
+    saveProfile(this.profile);
+    this.endAt = 0;
+    this.sound.stopEngine();
+    this.launch();
+    this.hud.message(`Level ${LEVELS[next].index}`, LEVELS[next].name, 1.6);
   }
 
   private finish(): void {
@@ -332,7 +365,18 @@ class App {
     });
     saveProfile(this.profile);
 
+    // Winning opens the next level.
+    const next = score.won ? nextLevel(id) : null;
+    let unlockedNow = false;
+    if (score.won && next && LEVELS[next].index > this.profile.unlocked) {
+      this.profile.unlocked = LEVELS[next].index;
+      unlockedNow = true;
+    }
+    saveProfile(this.profile);
+
     const result: ResultInfo = {
+      next: next ? LEVELS[next] : null,
+      unlockedNow,
       score,
       difficulty: solo.difficulty,
       cause: score.won ? 'Every other pilot is down. The sky is yours.' : g.crash ? this.causeText(w, g.crash) : '',

@@ -341,6 +341,62 @@ body {
   background: rgba(10, 10, 10, 0.06);
 }
 
+.levels-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.levels-grid button {
+  appearance: none;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 10px;
+  font: 700 14px/1.15 var(--f-body);
+  text-align: left;
+  color: var(--ink);
+  background: transparent;
+  border: 2px solid var(--ink);
+  cursor: pointer;
+}
+
+.levels-grid button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--yellow);
+}
+
+.levels-grid button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.levels-grid button:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.lv-n {
+  font: 800 16px/1 var(--f-display);
+}
+
+.lv-alt,
+.lv-lock {
+  font: 600 11px/1 var(--f-data);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .levels-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .stepper {
   display: flex;
   align-items: center;
@@ -496,15 +552,23 @@ kbd {
 }
 
 .h-tl {
-  left: calc(16px + var(--safe-l));
-  top: calc(12px + var(--safe-t));
+  left: calc(12px + var(--safe-l));
+  top: calc(10px + var(--safe-t));
   display: grid;
   gap: 2px;
 }
 
+/* A soft dark backing keeps the HUD readable on bright skies. */
+.h-tl,
 .h-tr {
-  right: calc(16px + var(--safe-r));
-  top: calc(12px + var(--safe-t));
+  padding: 6px 10px 8px;
+  background: rgba(6, 5, 14, 0.34);
+  border-radius: 4px;
+}
+
+.h-tr {
+  right: calc(12px + var(--safe-r));
+  top: calc(10px + var(--safe-t));
   display: grid;
   gap: 2px;
   text-align: right;
@@ -604,9 +668,30 @@ kbd {
 .h-radar {
   right: calc(14px + var(--safe-r));
   bottom: calc(14px + var(--safe-b));
-  width: clamp(104px, 14vw, 150px);
+  width: clamp(180px, 25vw, 300px);
   height: auto;
   aspect-ratio: 1;
+}
+
+.h-score {
+  pointer-events: auto;
+  appearance: none;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  margin: 0 0 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-shadow: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.h-score .h-v {
+  color: #fff;
 }
 
 .h-edge {
@@ -708,11 +793,25 @@ kbd {
 
 /* With touch controls the thumbs own the bottom corners, so radar and feed move up. */
 #hud.touch .h-radar {
+  right: calc(12px + var(--safe-r));
+  top: calc(10px + var(--safe-t));
+  bottom: auto;
+  width: min(160px, 40vh);
+}
+
+#hud.touch .h-tr {
   left: calc(16px + var(--safe-l));
   right: auto;
-  top: calc(108px + var(--safe-t));
-  bottom: auto;
-  width: 92px;
+  top: calc(104px + var(--safe-t));
+  text-align: left;
+}
+
+#hud.touch .h-tr .h-v {
+  font-size: 18px;
+}
+
+#hud.touch .h-score {
+  justify-items: start;
 }
 
 #hud.touch .h-feed {

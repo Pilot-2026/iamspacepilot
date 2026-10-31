@@ -3,6 +3,17 @@ import type { PilotInput } from '../core/types';
 import type { TouchControls } from '../ui/touch';
 
 const DEAD = 0.15;
+
+/** Records a tap and reports true on the fifth tap within 2.5 seconds. */
+export function countTap(taps: number[], now = performance.now()): boolean {
+  taps.push(now);
+  while (taps.length && now - taps[0] > 2500) taps.shift();
+  if (taps.length >= 5) {
+    taps.length = 0;
+    return true;
+  }
+  return false;
+}
 const dead = (v: number) => (Math.abs(v) < DEAD ? 0 : (v - Math.sign(v) * DEAD) / (1 - DEAD));
 
 /**
@@ -18,13 +29,20 @@ export class InputManager {
   private padPause = false;
   private readonly out: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false };
 
+  private readonly cheatTaps: number[] = [];
+
   constructor(
     private readonly touch: TouchControls,
     private readonly onPauseKey: () => void,
+    private readonly onCheat: () => void,
   ) {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' || e.code === 'KeyP') {
         if (!e.repeat) this.onPauseKey();
+        return;
+      }
+      if ((e.code === 'Digit1' || e.code === 'Numpad1') && !e.repeat) {
+        if (countTap(this.cheatTaps)) this.onCheat();
         return;
       }
       if (this.capturing && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();

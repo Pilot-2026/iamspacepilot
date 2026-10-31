@@ -1,7 +1,8 @@
 import { boundaryDistance } from '../core/arena';
 import { V3 } from '../core/math';
 import type { World } from '../core/world';
-import { formatTime } from './menu';
+import { countTap } from '../input/input';
+import { formatScore, formatTime } from './menu';
 
 const local = new V3();
 const tmp = new V3();
@@ -16,6 +17,8 @@ export class Hud {
   private readonly bar: HTMLElement;
   private readonly barFill: HTMLElement;
   private readonly alive: HTMLElement;
+  private readonly score: HTMLElement;
+  private readonly scoreTaps: number[] = [];
   private readonly time: HTMLElement;
   private readonly level: HTMLElement;
   private readonly center: HTMLElement;
@@ -35,6 +38,7 @@ export class Hud {
   constructor(
     private readonly root: HTMLElement,
     onPause: () => void,
+    onCheat: () => void,
   ) {
     root.innerHTML = `
       <div class="h-edge l"></div><div class="h-edge r"></div><div class="h-edge t"></div><div class="h-edge b"></div>
@@ -44,6 +48,7 @@ export class Hud {
       </div>
       <div class="h-level"></div>
       <div class="h-tr">
+        <button class="h-score" type="button" aria-label="Score"><span class="h-k">Score</span><span class="h-v" data-k="score">0</span></button>
         <span class="h-k">Pilots</span><span class="h-v" data-k="alive">0/0</span>
         <span class="h-k">Time</span><span class="h-v" data-k="time">0:00.0</span>
       </div>
@@ -58,6 +63,12 @@ export class Hud {
     this.bar = q('.h-bar');
     this.barFill = q('.h-bar i');
     this.alive = q('[data-k="alive"]');
+    this.score = q('[data-k="score"]');
+    // Five taps on the score within 2.5 seconds: jump to the next level.
+    q('.h-score').addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (countTap(this.scoreTaps)) onCheat();
+    });
     this.time = q('[data-k="time"]');
     this.level = q('.h-level');
     this.center = q('.h-center');
@@ -72,7 +83,7 @@ export class Hud {
 
   setup(world: World, colors: number[], player: number): void {
     this.colors = colors;
-    this.level.textContent = `${world.spec.name} · ${world.spec.altitude}`;
+    this.level.textContent = `L${world.spec.index} · ${world.spec.name} · ${world.spec.altitude}`;
     this.feedEl.innerHTML = '';
     this.center.classList.remove('show');
     this.root.style.setProperty('--hud', hex(colors[player % colors.length]));
@@ -120,7 +131,7 @@ export class Hud {
     }, 5000);
   }
 
-  update(world: World, player: number, dt: number, portraitTouch: boolean): void {
+  update(world: World, player: number, dt: number, portraitTouch: boolean, score: number): void {
     this.clock += dt;
     if (this.centerUntil && this.clock > this.centerUntil) {
       this.center.classList.remove('show');
@@ -132,6 +143,7 @@ export class Hud {
     if (this.tick % 4 === 0) {
       this.speed.textContent = String(Math.round(g.alive ? g.speed * 12 : 0));
       this.alive.textContent = `${world.aliveCount()}/${world.gliders.length}`;
+      this.score.textContent = formatScore(score);
       this.time.textContent = formatTime(world.flyTime);
     }
     this.barFill.style.width = `${Math.round(g.energy * 100)}%`;
@@ -174,7 +186,7 @@ export class Hud {
         let what = 'Shield';
         if (floorD <= bd + 0.01) {
           add(0, -1, 0, s);
-          what = world.spec.id === 'cloud-sea' ? 'Cloud sea' : 'Storm floor';
+          what = world.spec.floorLabel;
         } else if (ceilD <= bd + 0.01) {
           add(0, 1, 0, s);
           what = 'Ceiling';

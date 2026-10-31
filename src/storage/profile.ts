@@ -1,4 +1,5 @@
 import { validateCallsign } from '../core/callsign';
+import { LEVELS, LEVEL_ORDER } from '../core/levels';
 import type { Difficulty, LevelId } from '../core/types';
 
 export { validateCallsign };
@@ -38,6 +39,8 @@ export interface Profile {
   pilotKey: string;
   settings: Settings;
   solo: { level: LevelId; bots: number; difficulty: Difficulty };
+  /** How many levels are open: win a level to open the next one. */
+  unlocked: number;
   records: Partial<Record<LevelId, LevelRecord>>;
   highscores: Partial<Record<LevelId, LocalScore[]>>;
 }
@@ -60,6 +63,7 @@ export function defaultProfile(): Profile {
     pilotKey: newPilotKey(),
     settings: { volume: 0.8, invertPitch: false, autoHorizon: isTouch, quality: 'auto' },
     solo: { level: 'cloud-sea', bots: 3, difficulty: 'pilot' },
+    unlocked: 1,
     records: {},
     highscores: {},
   };
@@ -87,6 +91,16 @@ export function loadProfile(): Profile {
   } catch {
     p = base;
   }
+  // Levels already flown or won stay open, also for profiles from before levels unlocked.
+  let open = typeof p.unlocked === 'number' ? p.unlocked : 1;
+  for (const id of LEVEL_ORDER) {
+    const rec = p.records[id];
+    if (!rec) continue;
+    const i = LEVELS[id].index;
+    open = Math.max(open, rec.wins > 0 ? i + 1 : i);
+  }
+  p.unlocked = Math.max(1, Math.min(LEVEL_ORDER.length, open));
+  if (!LEVELS[p.solo.level] || LEVELS[p.solo.level].index > p.unlocked) p.solo.level = 'cloud-sea';
   saveProfile(p);
   return p;
 }
