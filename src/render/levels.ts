@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { LevelId } from '../core/types';
 import type { World } from '../core/world';
-import { latticeMaterial, makeDome } from './shaders';
+import { makeDome, shieldMaterial, type ShieldOptions } from './shaders';
 import type { WallStyle } from './ribbon';
 import { cloudTexture, sharedTextures } from './textures';
 
@@ -9,9 +9,11 @@ import { cloudTexture, sharedTextures } from './textures';
 export interface LevelEnv {
   readonly group: THREE.Group;
   readonly dome: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
-  readonly lattice: THREE.LineSegments<THREE.BufferGeometry, THREE.ShaderMaterial>;
-  /** Scales the lattice to the current arena radius. */
-  readonly latticeScale: (r: number) => void;
+  /** Glowing grid on the arena boundary, floor and ceiling. */
+  readonly shield: THREE.Group;
+  readonly shieldMats: THREE.ShaderMaterial[];
+  /** Fits the shield to the current arena radius. */
+  readonly shieldScale: (r: number) => void;
   readonly fog: THREE.Fog | null;
   readonly background: number;
   readonly wall: WallStyle;
@@ -36,23 +38,13 @@ function disposeGroup(g: THREE.Object3D): void {
   });
 }
 
-function cylinderLattice(R: number, y0: number, y1: number, ringStep: number, verts: number): THREE.BufferGeometry {
-  const pts: number[] = [];
-  const TAU = Math.PI * 2;
-  for (let y = y0; y <= y1 + 0.01; y += ringStep) {
-    for (let i = 0; i < 96; i++) {
-      const a0 = (i / 96) * TAU;
-      const a1 = ((i + 1) / 96) * TAU;
-      pts.push(R * Math.cos(a0), y, R * Math.sin(a0), R * Math.cos(a1), y, R * Math.sin(a1));
-    }
-  }
-  for (let j = 0; j < verts; j++) {
-    const a = (j / verts) * TAU;
-    pts.push(R * Math.cos(a), y0, R * Math.sin(a), R * Math.cos(a), y1, R * Math.sin(a));
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  return g;
+/** A flat round grid for floors and ceilings. Radius 1, scaled later. */
+function shieldDisc(y: number, o: ShieldOptions): THREE.Mesh<THREE.CircleGeometry, THREE.ShaderMaterial> {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(1, 96), shieldMaterial(o));
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = y;
+  m.renderOrder = -5;
+  return m;
 }
 
 function stars(n: number, minY: number, size: number, color: number): THREE.Points {
@@ -80,7 +72,7 @@ function stars(n: number, minY: number, size: number, color: number): THREE.Poin
 /** Level 1: sunset over a sea of clouds. */
 function cloudSea(): LevelEnv {
   const group = new THREE.Group();
-  const dome = makeDome({
+  const sky = makeDome({
     top: 0x0b1640,
     mid: 0x4a4aa0,
     hor: 0xff9a66,
@@ -88,7 +80,7 @@ function cloudSea(): LevelEnv {
     sunDir: new THREE.Vector3(-0.6, 0.06, -0.8),
     sunCol: 0xffc890,
   });
-  group.add(dome);
+  group.add(sky);
 
   const seaTex = cloudTexture(7);
   const sea = new THREE.SpriteMaterial({ map: seaTex, color: 0xffd2c2, transparent: true, opacity: 0.66, depthWrite: false });
@@ -114,17 +106,27 @@ function cloudSea(): LevelEnv {
     group.add(s);
   }
 
-  const lattice = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(110, 3), 1),
-    latticeMaterial(0xffc79a, 0.06, 40),
+  // The shield: a sphere of 110 m around the centre, cut off at the cloud floor.
+  const shield = new THREE.Group();
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(110, 96, 48),
+    shieldMaterial({ color: 0x7ff6ff, cells: [48, 24], line: 0.34, fill: 0.025, floorY: -40 }),
   );
-  group.add(lattice);
+  dome.renderOrder = -5;
+  const floor = shieldDisc(-40, { color: 0x7ff6ff, cells: [16, 16], line: 0.2, fill: 0, floorY: -1e9 });
+  shield.add(dome, floor);
+  group.add(shield);
 
   return {
     group,
-    dome,
-    lattice,
-    latticeScale: (r) => lattice.scale.setScalar(r / 110),
+    dome: sky,
+    shield,
+    shieldMats: [dome.material, floor.material],
+    shieldScale: (r) => {
+      dome.scale.setScalar(r / 110);
+      const fr = Math.sqrt(Math.max(1, r * r - 40 * 40));
+      floor.scale.set(fr, fr, 1);
+    },
     fog: new THREE.Fog(0xe7896b, 170, 720),
     background: 0xe7896b,
     wall: { additive: false, core: 0.34, fogColor: 0xe7896b, fogFar: 520 },
@@ -184,8 +186,18 @@ function stormEye(): LevelEnv {
     group.add(s);
   }
 
-  const lattice = new THREE.LineSegments(cylinderLattice(100, -55, 70, 25, 40), latticeMaterial(0xb8a8ff, 0.07, 40));
-  group.add(lattice);
+  // The shield: a tube of 100 m radius from the storm floor to the ceiling.
+  const shield = new THREE.Group();
+  const tube = new THREE.Mesh(
+    new THREE.CylinderGeometry(100, 100, 125, 96, 1, true),
+    shieldMaterial({ color: 0x8ff6ff, cells: [36, 8], line: 0.55, fill: 0.035, floorY: -1e9 }),
+  );
+  tube.position.y = 7.5;
+  tube.renderOrder = -5;
+  const floor = shieldDisc(-55, { color: 0x8ff6ff, cells: [14, 14], line: 0.34, fill: 0.015, floorY: -1e9 });
+  const ceiling = shieldDisc(70, { color: 0x8ff6ff, cells: [14, 14], line: 0.34, fill: 0.015, floorY: -1e9 });
+  shield.add(tube, floor, ceiling);
+  group.add(shield);
 
   // Rising air in the middle.
   const UPN = 260;
@@ -218,8 +230,13 @@ function stormEye(): LevelEnv {
   return {
     group,
     dome,
-    lattice,
-    latticeScale: (r) => lattice.scale.set(r / 100, 1, r / 100),
+    shield,
+    shieldMats: [tube.material, floor.material, ceiling.material],
+    shieldScale: (r) => {
+      tube.scale.set(r / 100, 1, r / 100);
+      floor.scale.set(r, r, 1);
+      ceiling.scale.set(r, r, 1);
+    },
     fog: new THREE.Fog(0x1d1836, 150, 620),
     background: 0x1d1836,
     wall: { additive: true, core: 0.2, fogColor: 0x1d1836, fogFar: 460 },

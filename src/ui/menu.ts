@@ -1,16 +1,16 @@
 import { LEVELS, LEVEL_ORDER, type LevelSpec } from '../core/levels';
+import { DIFFICULTY_FACTOR, POINTS, type SoloScore } from '../core/solo';
 import type { Difficulty, LevelId } from '../core/types';
-import { saveProfile, validateCallsign, type Profile, type Quality } from '../storage/profile';
+import { onlineErrorText, type BoardResult } from '../net/api';
+import { LOCAL_TOP, saveProfile, validateCallsign, type Profile, type Quality } from '../storage/profile';
 
 export interface ResultInfo {
-  won: boolean;
-  place: number;
-  pilots: number;
-  time: number;
-  best: number;
-  newBest: boolean;
+  score: SoloScore;
+  difficulty: Difficulty;
   cause: string;
   level: LevelSpec;
+  /** Place on this device's highscore list, 0 if not on it. */
+  localRank: number;
 }
 
 export interface MenuHandlers {
@@ -20,6 +20,7 @@ export interface MenuHandlers {
   quit(): void;
   settingsChanged(): void;
   click(): void;
+  loadBoard(level: LevelId): Promise<BoardResult>;
 }
 
 type Screen = 'callsign' | 'main' | 'solo' | 'howto' | 'settings' | 'online' | 'board' | 'pause' | 'result' | 'nogl';
@@ -37,6 +38,15 @@ const ART = `
 </div>`;
 
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { rookie: 'Rookie', pilot: 'Pilot', ace: 'Ace' };
+
+export function formatScore(n: number): string {
+  return Math.round(n).toLocaleString('en-US');
+}
+
+function ordinal(n: number): string {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+  return `${n}${n % 10 > 3 ? 'th' : s}`;
+}
 
 export function formatTime(s: number): string {
   const m = Math.floor(s / 60);
@@ -58,6 +68,8 @@ export class Menu {
   private back: Screen | null = null;
   private result: ResultInfo | null = null;
   private padPrev = { up: false, down: false, a: false, b: false };
+  private boardLevel: LevelId;
+  private onlineStatus = '';
   /** Where Settings returns to: the main menu or the pause menu. */
   private settingsReturn: Screen = 'main';
 
@@ -66,6 +78,7 @@ export class Menu {
     private readonly profile: Profile,
     private readonly h: MenuHandlers,
   ) {
+    this.boardLevel = profile.solo.level;
     root.addEventListener('click', (e) => this.onClick(e));
     root.addEventListener('input', (e) => this.onInput(e));
     root.addEventListener('keydown', (e) => this.onKey(e));
@@ -89,6 +102,23 @@ export class Menu {
       (this.root.querySelector('[data-focus]') as HTMLElement | null) ??
       (this.root.querySelector('.mi:not([aria-disabled="true"])') as HTMLElement | null);
     first?.focus({ preventScroll: true });
+    if (screen === 'board') this.loadBoard();
+  }
+
+  /** Updates the online line on the result screen once the server answers. */
+  setOnlineStatus(text: string): void {
+    this.onlineStatus = text;
+    const el = this.root.querySelector('#online-status');
+    if (el) el.textContent = text;
+  }
+
+  private loadBoard(): void {
+    const level = this.boardLevel;
+    void this.h.loadBoard(level).then((res) => {
+      if (this.screen !== 'board' || this.boardLevel !== level) return;
+      const box = this.root.querySelector('#board-online');
+      if (box) box.innerHTML = this.onlineTable(res);
+    });
   }
 
   /** Lets a gamepad move through the menu: stick or d-pad, A to choose, B to go back. */
@@ -221,6 +251,14 @@ export class Menu {
         this.back = 'settings';
         this.show('callsign');
         break;
+      case 'board-level':
+        this.boardLevel = val as LevelId;
+        this.show('board');
+        break;
+      case 'board':
+        this.boardLevel = (this.result?.level.id ?? this.boardLevel) as LevelId;
+        this.show('board');
+        break;
     }
   }
 
@@ -272,11 +310,7 @@ export class Menu {
           'Up to 8 pilots per match. Public or private rooms. Free-for-all or two teams of four. Live voice radio with everyone in the match.',
         );
       case 'board':
-        return this.soonScreen(
-          'Leaderboard',
-          'Leaderboard is coming',
-          'Best times and wins of every pilot, open for everyone to see. Records will be checked by the server before they count.',
-        );
+        return this.boardScreen();
       case 'pause':
         return this.pauseScreen();
       case 'result':
@@ -319,11 +353,11 @@ export class Menu {
       <nav class="m-list" aria-label="Main menu">
         <button class="mi" data-act="go" data-val="solo">Solo flight ${ARROW}</button>
         <button class="mi" data-act="go" data-val="online">Online <span class="tag">Soon</span></button>
-        <button class="mi" data-act="go" data-val="board">Leaderboard <span class="tag">Soon</span></button>
+        <button class="mi" data-act="go" data-val="board">Leaderboard ${ARROW}</button>
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span>Solo test build · v0.1</span><span>Fly free. Leave light behind.</span>`,
+      `<span>Solo build · v0.2</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
@@ -331,6 +365,7 @@ export class Menu {
     this.back = 'main';
     const p = this.profile.solo;
     const rec = this.profile.records[p.level];
+    const top = this.profile.highscores[p.level]?.[0];
     const levelButtons = LEVEL_ORDER.map((id) => {
       const L = LEVELS[id];
       return `<button data-act="level" data-val="${id}" aria-pressed="${p.level === id}">${L.name} · ${L.altitude}</button>`;
@@ -339,8 +374,8 @@ export class Menu {
       .map((d) => `<button data-act="difficulty" data-val="${d}" aria-pressed="${p.difficulty === d}">${DIFFICULTY_LABEL[d]}</button>`)
       .join('');
     const record = rec
-      ? `Best on ${LEVELS[p.level].name}: ${formatTime(rec.bestTime)} · ${rec.wins} ${rec.wins === 1 ? 'win' : 'wins'} in ${rec.flights} ${rec.flights === 1 ? 'flight' : 'flights'}`
-      : `No flights on ${LEVELS[p.level].name} yet.`;
+      ? `Highscore on ${LEVELS[p.level].name}: ${top ? formatScore(top.score) : '–'} · ${rec.wins} ${rec.wins === 1 ? 'win' : 'wins'} in ${rec.flights} ${rec.flights === 1 ? 'flight' : 'flights'}`
+      : `No flights on ${LEVELS[p.level].name} yet. Harder difficulty scores more: Rookie ×1, Pilot ×1.5, Ace ×2.`;
     return this.frame(
       `<p class="m-kicker">Solo flight</p>
       <h2 class="m-title">Last pilot flying wins</h2>
@@ -436,21 +471,78 @@ export class Menu {
     this.back = null;
     const r = this.result;
     if (!r) return this.mainScreen();
-    const place = r.won ? '1st' : `${r.place}${['th', 'st', 'nd', 'rd'][r.place > 3 ? 0 : r.place]}`;
+    const sc = r.score;
+    const parts = [`${sc.time.toFixed(1)} s × ${POINTS.perSecond}`];
+    if (sc.outlasted) parts.push(`${sc.outlasted} outlasted × ${POINTS.perPilotOutlasted}`);
+    if (sc.cutoffs) parts.push(`${sc.cutoffs} hit your wall × ${POINTS.perCutoff}`);
+    if (sc.rings) parts.push(`${sc.rings} ${sc.rings === 1 ? 'ring' : 'rings'} × ${POINTS.perRing}`);
+    if (sc.won) parts.push(`win ${POINTS.win}`);
+    const factor = DIFFICULTY_FACTOR[r.difficulty];
+    const local =
+      r.localRank === 1
+        ? 'New highscore on this device.'
+        : r.localRank > 0
+          ? `${ordinal(r.localRank)} best on this device.`
+          : `Not in this device's top ${LOCAL_TOP}.`;
     return this.frame(
-      `<p class="m-kicker">${esc(r.level.name)} · ${r.pilots} pilots</p>
-      <h2 class="m-title">${r.won ? 'Last pilot flying' : 'Crashed'}</h2>
+      `<p class="m-kicker">${esc(r.level.name)} · ${sc.pilots} pilots · ${DIFFICULTY_LABEL[r.difficulty]}</p>
+      <h2 class="m-title">${sc.won ? 'Last pilot flying' : 'Crashed'}</h2>
       <p class="m-text">${esc(r.cause)}</p>
       <dl class="stats">
-        <div><dt>Time</dt><dd>${formatTime(r.time)}</dd></div>
-        <div><dt>Place</dt><dd>${place}</dd></div>
-        <div><dt>${r.newBest ? 'New best' : 'Best'}</dt><dd>${formatTime(r.best)}</dd></div>
+        <div><dt>Score</dt><dd>${formatScore(sc.score)}</dd></div>
+        <div><dt>Time</dt><dd>${formatTime(sc.time)}</dd></div>
+        <div><dt>Place</dt><dd>${sc.won ? '1st' : ordinal(sc.place)}</dd></div>
       </dl>
+      <p class="m-hint">(${parts.join(' + ')}) × ${factor} for ${DIFFICULTY_LABEL[r.difficulty]}</p>
+      <p class="m-text"><strong>${local}</strong> <span id="online-status">${esc(this.onlineStatus)}</span></p>
       <div class="m-list">
         <button class="mi primary" data-act="restart" data-focus>Fly again</button>
+        <button class="mi" data-act="board">Leaderboard ${ARROW}</button>
         <button class="mi" data-act="quit">Main menu ${ARROW}</button>
       </div>`,
     );
+  }
+
+  private boardScreen(): string {
+    this.back = 'main';
+    const level = this.boardLevel;
+    const tabs = LEVEL_ORDER.map(
+      (id) => `<button data-act="board-level" data-val="${id}" aria-pressed="${id === level}">${LEVELS[id].name}</button>`,
+    ).join('');
+    const local = this.profile.highscores[level] ?? [];
+    const localRows = local
+      .map(
+        (e, i) =>
+          `<tr><td class="num">${i + 1}</td><td class="num">${formatScore(e.score)}</td><td class="num">${formatTime(e.time)}</td><td>${e.won ? 'Win' : `${ordinal(e.place)} of ${e.pilots}`}</td><td>${DIFFICULTY_LABEL[e.difficulty]}</td><td>${esc(e.date.slice(0, 10))}</td></tr>`,
+      )
+      .join('');
+    const localTable = local.length
+      ? `<div class="keys-wrap"><table class="keys board"><thead><tr><th>#</th><th>Score</th><th>Time</th><th>Result</th><th>Difficulty</th><th>Date</th></tr></thead><tbody>${localRows}</tbody></table></div>`
+      : '<p class="m-hint">No flights on this level yet.</p>';
+    return this.frame(
+      `<p class="m-kicker">Leaderboard</p>
+      <h2 class="m-title">Highscores</h2>
+      <div class="seg">${tabs}</div>
+      <h3 class="m-sub">All pilots</h3>
+      <div id="board-online"><p class="m-hint">Loading the online leaderboard…</p></div>
+      <h3 class="m-sub">This device</h3>
+      ${localTable}
+      <p class="m-hint">Score: ${POINTS.perSecond} per second in the air, ${POINTS.perPilotOutlasted} per pilot you outlast, ${POINTS.perCutoff} per pilot that hits your wall, ${POINTS.perRing} per ring, ${POINTS.win} for a win. Then times 1 for Rookie, 1.5 for Pilot, 2 for Ace. Online scores are checked by replaying your flight on the server.</p>
+      <div class="m-list"><button class="mi" data-act="back">Back ${ARROW}</button></div>`,
+    );
+  }
+
+  private onlineTable(res: BoardResult): string {
+    if (!res.ok) return `<p class="m-hint">${esc(onlineErrorText(res.error))}</p>`;
+    if (!res.rows.length) return '<p class="m-hint">No online scores yet. Fly a round to be the first.</p>';
+    const me = this.profile.callsign.toLowerCase();
+    const rows = res.rows
+      .map(
+        (r, i) =>
+          `<tr${r.callsign.toLowerCase() === me ? ' class="me"' : ''}><td class="num">${i + 1}</td><td>${esc(r.callsign)}</td><td class="num">${formatScore(r.score)}</td><td class="num">${formatTime(r.time)}</td><td>${esc(DIFFICULTY_LABEL[r.difficulty as Difficulty] ?? r.difficulty)}</td></tr>`,
+      )
+      .join('');
+    return `<div class="keys-wrap"><table class="keys board"><thead><tr><th>#</th><th>Pilot</th><th>Score</th><th>Time</th><th>Difficulty</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   private noGlScreen(): string {

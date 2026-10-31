@@ -64,43 +64,83 @@ export function makeDome(o: DomeOptions): THREE.Mesh<THREE.SphereGeometry, THREE
   return mesh;
 }
 
-/** Arena shield lattice: almost invisible, glows up near the player. */
-const latticeVert = /* glsl */ `
+/**
+ * Arena shield: a glowing grid on the arena boundary, clearly visible from
+ * anywhere in the arena. Lines get thicker, brighter and turn red near the player.
+ * The same material draws the deadly floor and ceiling.
+ */
+const shieldVert = /* glsl */ `
 varying vec3 vW;
+varying vec2 vUv;
 void main() {
+  vUv = uv;
   vec4 w = modelMatrix * vec4(position, 1.0);
   vW = w.xyz;
   gl_Position = projectionMatrix * viewMatrix * w;
 }`;
 
-const latticeFrag = /* glsl */ `
+const shieldFrag = /* glsl */ `
 uniform vec3 uPlayer;
 uniform vec3 uColor;
-uniform float uBase;
+uniform vec3 uWarn;
+uniform vec2 uCells;
+uniform float uLine;
+uniform float uFill;
 uniform float uGlowR;
 uniform float uPulse;
+uniform float uTime;
+uniform float uFloorY;
 varying vec3 vW;
+varying vec2 vUv;
 void main() {
-  float g = 1.0 - smoothstep(0.0, uGlowR, distance(vW, uPlayer));
-  float a = uBase * (1.0 + uPulse) + g * 0.85;
-  gl_FragColor = vec4(uColor * (0.7 + g * 0.9), a);
+  if (vW.y < uFloorY) discard;
+  vec2 c = vUv * uCells;
+  vec2 g = abs(fract(c - 0.5) - 0.5) / max(fwidth(c), vec2(1e-4));
+  float gd = min(g.x, g.y);
+  float d = distance(vW, uPlayer);
+  float near = 1.0 - smoothstep(0.0, uGlowR, d);
+  float close = 1.0 - smoothstep(0.0, uGlowR * 0.45, d);
+  // About 2 px wide lines, up to 6 px close to the player.
+  float w = 1.0 + near * 2.0;
+  float line = 1.0 - smoothstep(w, w + 1.2, gd);
+  float viewD = distance(vW, cameraPosition);
+  float far = 1.0 - smoothstep(120.0, 360.0, viewD) * 0.5;
+  float pulse = uPulse * (0.5 + 0.5 * sin(uTime * 6.0));
+  float a = line * (uLine * (1.0 + pulse) + near * 0.65) * far;
+  a += uFill * (1.0 + pulse) + near * 0.16 + close * 0.14;
+  vec3 col = mix(uColor, uWarn, close);
+  gl_FragColor = vec4(col * (1.0 + near * 0.6), clamp(a, 0.0, 1.0));
 }`;
 
-export function latticeMaterial(color: number, base: number, glowR: number): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
+export interface ShieldOptions {
+  color: number;
+  cells: [number, number];
+  line: number;
+  fill: number;
+  floorY: number;
+}
+
+export function shieldMaterial(o: ShieldOptions): THREE.ShaderMaterial {
+  const m = new THREE.ShaderMaterial({
     uniforms: {
       uPlayer: { value: new THREE.Vector3() },
-      uColor: { value: new THREE.Color(color) },
-      uBase: { value: base },
-      uGlowR: { value: glowR },
+      uColor: { value: new THREE.Color(o.color) },
+      uWarn: { value: new THREE.Color(0xff3b30) },
+      uCells: { value: new THREE.Vector2(o.cells[0], o.cells[1]) },
+      uLine: { value: o.line },
+      uFill: { value: o.fill },
+      uGlowR: { value: 45 },
       uPulse: { value: 0 },
+      uTime: { value: 0 },
+      uFloorY: { value: o.floorY },
     },
-    vertexShader: latticeVert,
-    fragmentShader: latticeFrag,
+    vertexShader: shieldVert,
+    fragmentShader: shieldFrag,
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
   });
+  return m;
 }
 
 /** Light wall: translucent band with bright edges and a flash where it is born. */

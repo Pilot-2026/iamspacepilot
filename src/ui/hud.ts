@@ -23,6 +23,9 @@ export class Hud {
   private readonly radar: HTMLCanvasElement;
   private readonly edges: Record<'l' | 'r' | 't' | 'b', HTMLElement>;
   private readonly hint: HTMLElement;
+  private readonly alert: HTMLElement;
+  /** Distance to the nearest arena boundary while flying, used for the warning sound. */
+  boundaryDist = 1e9;
   private readonly ctx: CanvasRenderingContext2D | null;
   private colors: number[] = [];
   private centerUntil = 0;
@@ -48,6 +51,7 @@ export class Hud {
       <div class="h-feed"></div>
       <canvas class="h-radar" width="240" height="240" aria-hidden="true"></canvas>
       <button class="h-pause" type="button" aria-label="Pause">II</button>
+      <div class="h-alert" hidden></div>
       <div class="h-hint" hidden>Turn your phone sideways for the best view</div>`;
     const q = <T extends HTMLElement>(sel: string) => root.querySelector(sel) as T;
     this.speed = q('[data-k="speed"]');
@@ -60,6 +64,7 @@ export class Hud {
     this.feedEl = q('.h-feed');
     this.radar = q<HTMLCanvasElement>('.h-radar');
     this.hint = q('.h-hint');
+    this.alert = q('.h-alert');
     this.edges = { l: q('.h-edge.l'), r: q('.h-edge.r'), t: q('.h-edge.t'), b: q('.h-edge.b') };
     this.ctx = this.radar.getContext('2d');
     q('.h-pause').addEventListener('click', onPause);
@@ -142,6 +147,9 @@ export class Hud {
     let r = 0;
     let t = 0;
     let b = 0;
+    let alert = '';
+    let alertClose = false;
+    this.boundaryDist = 1e9;
     const add = (wx: number, wy: number, wz: number, strength: number) => {
       tmp.set(wx, wy, wz).normalize();
       g.qb.rotateInverse(tmp, local);
@@ -158,18 +166,29 @@ export class Hud {
       const arena = world.spec.arena;
       const R = world.radius();
       const bd = boundaryDistance(arena, R, g.p);
-      if (bd < 16) {
-        const s = 1 - Math.max(0, bd) / 16;
+      this.boundaryDist = bd;
+      if (bd < 25) {
+        const s = 1 - Math.max(0, bd) / 25;
         const floorD = g.p.y - arena.floorY;
         const ceilD = arena.ceilY - g.p.y;
-        if (floorD <= bd + 0.01) add(0, -1, 0, s);
-        else if (ceilD <= bd + 0.01) add(0, 1, 0, s);
-        else if (arena.kind === 'dome') add(g.p.x, g.p.y, g.p.z, s);
+        let what = 'Shield';
+        if (floorD <= bd + 0.01) {
+          add(0, -1, 0, s);
+          what = world.spec.id === 'cloud-sea' ? 'Cloud sea' : 'Storm floor';
+        } else if (ceilD <= bd + 0.01) {
+          add(0, 1, 0, s);
+          what = 'Ceiling';
+        } else if (arena.kind === 'dome') add(g.p.x, g.p.y, g.p.z, s);
         else add(g.p.x, 0, g.p.z, s);
+        alert = `${what} ${Math.max(0, Math.ceil(bd))} m`;
+        alertClose = bd < 10;
       }
     }
+    if (this.alert.textContent !== alert) this.alert.textContent = alert;
+    this.alert.hidden = !alert;
+    this.alert.classList.toggle('close', alertClose);
     const set = (el: HTMLElement, v: number) => {
-      const o = (Math.min(1, v) * 0.75).toFixed(2);
+      const o = (Math.min(1, v) * 0.9).toFixed(2);
       if (el.style.opacity !== o) el.style.opacity = o;
     };
     set(this.edges.l, l);

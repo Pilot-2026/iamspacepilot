@@ -76,6 +76,8 @@ export class World {
   flyTicks = 0;
   phase: Phase = 'countdown';
   winner = -1;
+  /** Tick on which the round ended, -1 while it is still running. */
+  overTick = -1;
 
   private nextBoltFly = 4 * TICK_RATE;
   private boltSeq = 0;
@@ -120,6 +122,7 @@ export class World {
         crashTick: -1,
         crash: null,
         place: 0,
+        rings: 0,
         wallDist: 1e9,
         near: new V3(),
         hasNear: false,
@@ -214,6 +217,7 @@ export class World {
 
     if (this.phase === 'flying' && gl.length > 1 && this.aliveCount() <= 1) {
       this.phase = 'over';
+      this.overTick = this.tick;
       const w = gl.find((g) => g.alive);
       this.winner = w ? w.id : -1;
       if (w) w.place = 1;
@@ -403,6 +407,7 @@ export class World {
         if (ix * ix + iy * iy + iz * iz > r2) continue;
         const e = g.energy + FLIGHT.ringBoost;
         g.energy = e > 1 ? 1 : e;
+        g.rings++;
         ring.active = false;
         ring.respawnTick = this.tick + 8 * TICK_RATE;
         this.events.push({ type: 'ring', id: g.id, ring: k });

@@ -4,7 +4,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 
 **Play:** https://iamspacepilot.netlify.app
 
-## Status: phase 1, solo test build
+## Status: solo build with highscores
 
 - Free flight (turn, pitch, roll). The light wall rolls with your glider: fly level and it stands upright, roll 90° and it lies flat, keep rolling and it twists into a spiral.
 - Two levels: **Cloud Sea** (3 km, sunset, boost rings) and **Storm Eye** (12 km, turning storm wall, updraft, lightning that leaves deadly bolts).
@@ -12,7 +12,22 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 - The arena shield closes in after 30 seconds.
 - Boost: hold to speed up, refill it by flying close along walls or through rings.
 - Keyboard, gamepad and touch (floating stick, boost and roll buttons).
-- Yellow menus, local callsign and records, synthesized sound, installable as an app.
+- The arena shield, floor and ceiling are drawn as a glowing grid that turns red and thick when you get close, with a distance warning and a warning tone.
+- Highscores: a score for every round, the top 10 on this device and an online leaderboard for all pilots.
+- Yellow menus, callsign, synthesized sound, installable as an app.
+
+## Score
+
+Per round: 10 points per second in the air, 100 per pilot you outlast, 250 per pilot that hits your wall, 50 per ring, 500 for a win. The sum is multiplied by 1 (Rookie), 1.5 (Pilot) or 2 (Ace).
+
+## Online leaderboard
+
+Two Netlify Functions, backed by Firebase Firestore:
+
+- `POST /api/score` replays the recorded flight with the same simulation code the game runs. Only if the replay ends with the same score is it stored. The first post with a callsign claims it for that browser (a secret pilot key); other browsers cannot post under that callsign.
+- `GET /api/leaderboard?level=cloud-sea` returns the 50 best pilots of a level.
+
+They need three environment variables in Netlify: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` (from a Firebase service account key). Without them the game still works and keeps highscores on the device. Firestore collections: `pilots`, `lb_<level>`, `replays`. All access goes through the functions, so the Firestore security rules can stay locked.
 
 ## Controls
 
@@ -47,16 +62,19 @@ src/render/   three.js: sky, clouds, light walls, gliders, camera, effects.
 src/ui/       Yellow menus, flight HUD with radar, touch controls, styles.
 src/input/    Keyboard, gamepad and touch merged into one pilot input.
 src/audio/    All sounds made live with the Web Audio API.
-src/storage/  Callsign, settings and records in this browser.
-tests/        Simulation tests (determinism, collisions, bots, rounds).
+src/storage/  Callsign, settings, records and local highscores in this browser.
+src/net/      Calls to the online leaderboard.
+server/       Leaderboard logic and a small Firestore REST client for the functions.
+netlify/functions/  The two API endpoints.
+tests/        Simulation, replay and leaderboard tests.
 ```
 
 The deterministic core is the groundwork for online play: the same code will run on the server, which lets it check records by replaying recorded inputs.
 
 ## Roadmap
 
-1. **Phase 1 (this build):** solo flight, levels 1 and 2, bots, phone and PC controls, sound.
-2. **Phase 2:** callsigns and records online (Firebase via Netlify Functions), public leaderboard, daily challenge, ghost runs.
+1. **Phase 1 (done):** solo flight, levels 1 and 2, bots, phone and PC controls, sound.
+2. **Phase 2 (started):** online leaderboard with verified scores (done). Next: daily challenge, ghost runs, pilot code to use a callsign on several devices.
 3. **Phase 3:** online matches with up to 8 pilots, public or private, free-for-all or two teams of four.
 4. **Phase 4:** live voice radio (LiveKit) with mute, block and report.
 5. **Phase 5:** levels 3 to 5 (Aurora, Orbit, Lattice Core) and the rank ladder up to Space Pilot.
