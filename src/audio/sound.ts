@@ -18,6 +18,7 @@ export class Sound {
   } | null = null;
   private volume = 0.8;
   private nextWarn = 0;
+  private nextShield = 0;
 
   unlock(): void {
     if (this.ctx) {
@@ -107,7 +108,7 @@ export class Sound {
   }
 
   /** Called every frame while flying. */
-  updateEngine(speed: number, boosting: boolean, wallDist: number): void {
+  updateEngine(speed: number, boosting: boolean, wallDist: number, shieldDist = 1e9): void {
     const e = this.engine;
     const ctx = this.ctx;
     if (!e || !ctx) return;
@@ -122,6 +123,11 @@ export class Sound {
     if (wallDist < 6 && t >= this.nextWarn) {
       this.tone(1046, 0.05, 'square', 0.05, t);
       this.nextWarn = t + 0.07 + (wallDist / 6) * 0.35;
+    }
+    // A lower, softer pulse warns of the shield, floor or ceiling.
+    if (shieldDist < 20 && t >= this.nextShield) {
+      this.tone(392, 0.11, 'triangle', 0.12, t);
+      this.nextShield = t + 0.12 + (Math.max(0, shieldDist) / 20) * 0.6;
     }
   }
 

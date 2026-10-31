@@ -24,6 +24,8 @@ export interface Glider {
   crash: CrashInfo | null;
   /** Final placing, 0 while still flying. */
   place: number;
+  /** Boost rings collected. */
+  rings: number;
   /** Distance to the nearest wall in range, or a large number. */
   wallDist: number;
   readonly near: V3;

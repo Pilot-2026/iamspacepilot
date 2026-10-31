@@ -263,11 +263,13 @@ export class GameView {
     this.updateCamera(w, dt);
 
     const R = w.radius();
-    env.latticeScale(R);
-    const lu = env.lattice.material.uniforms;
-    lu.uPlayer.value.copy(this.pilots[this.player].p);
+    env.shieldScale(R);
     const shrinking = w.phase !== 'countdown' && w.flyTime > w.spec.arena.shrinkStart && R > w.spec.arena.minRadius;
-    lu.uPulse.value = shrinking ? 0.8 + 0.6 * Math.sin(this.time * 6) : 0;
+    for (const m of env.shieldMats) {
+      m.uniforms.uPlayer.value.copy(this.pilots[this.player].p);
+      m.uniforms.uPulse.value = shrinking ? 1 : 0;
+      m.uniforms.uTime.value = this.time;
+    }
 
     this.flashLevel = Math.max(0, this.flashLevel - dt * 2.5);
     env.flash(this.flashLevel * (0.6 + 0.4 * Math.abs(Math.sin(this.time * 70))));

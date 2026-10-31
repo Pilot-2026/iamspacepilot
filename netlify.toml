@@ -8,6 +8,12 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# Online leaderboard: /api/score and /api/leaderboard (see server/).
+# They need FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY.
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 [[headers]]
   for = "/assets/*"
   [headers.values]

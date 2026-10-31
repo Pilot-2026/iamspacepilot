@@ -9,17 +9,19 @@ import '@fontsource/chakra-petch/600.css';
 import './ui/styles.css';
 
 import { Sound } from './audio/sound';
-import { COUNTDOWN_TICKS, DT, TICK_RATE } from './core/config';
+import { DT } from './core/config';
+import { ReplayRecorder, quantize } from './core/replay';
+import { playerFinished, soloScore, soloWorldSetup, type SoloScore, type SoloSetup } from './core/solo';
 import type { CrashInfo, SimEvent } from './core/types';
-import { World, type PilotSetup } from './core/world';
+import { World } from './core/world';
 import { InputManager } from './input/input';
+import { fetchBoard, onlineErrorText, submitScore } from './net/api';
 import { GameView } from './render/view';
-import { loadProfile, saveProfile, type Profile } from './storage/profile';
+import { addLocalScore, loadProfile, saveProfile, type Profile } from './storage/profile';
 import { Hud } from './ui/hud';
-import { Menu, type ResultInfo } from './ui/menu';
+import { Menu, formatScore, type ResultInfo } from './ui/menu';
 import { TouchControls } from './ui/touch';
 
-const BOT_NAMES = ['Vega', 'Orion', 'Lumen', 'Nova', 'Polaris', 'Zirrus', 'Skyla'];
 const PLAYER = 0;
 const isTouchDevice = () =>
   (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window;
@@ -40,6 +42,10 @@ class App {
   private last = 0;
   private endAt = 0;
   private wakeLock: { release(): Promise<void> } | null = null;
+  /** The current round's setup, the recording of the player's inputs and the final score. */
+  private solo: SoloSetup | null = null;
+  private recorder = new ReplayRecorder();
+  private final: { score: SoloScore; ticks: number } | null = null;
 
   constructor() {
     const $ = (id: string) => document.getElementById(id) as HTMLElement;
@@ -58,6 +64,7 @@ class App {
         this.sound.unlock();
         this.sound.click();
       },
+      loadBoard: (level) => fetchBoard(level),
     });
 
     try {
@@ -106,13 +113,16 @@ class App {
     if (!this.view) return;
     this.sound.unlock();
     const p = this.profile;
-    const pilots: PilotSetup[] = [
-      { name: p.callsign || 'You', isBot: false, assist: p.settings.autoHorizon, skill: p.solo.difficulty },
-    ];
-    for (let i = 0; i < p.solo.bots; i++) {
-      pilots.push({ name: BOT_NAMES[i % BOT_NAMES.length], isBot: true, assist: true, skill: p.solo.difficulty });
-    }
-    this.world = new World({ level: p.solo.level, seed: (Date.now() ^ (Math.random() * 1e9)) >>> 0, pilots });
+    this.solo = {
+      level: p.solo.level,
+      seed: (Date.now() ^ (Math.random() * 1e9)) >>> 0,
+      bots: p.solo.bots,
+      difficulty: p.solo.difficulty,
+      assist: p.settings.autoHorizon,
+    };
+    this.world = new World(soloWorldSetup(this.solo, p.callsign || 'You'));
+    this.recorder = new ReplayRecorder();
+    this.final = null;
     this.view.load(this.world, PLAYER);
     const colors = this.world.gliders.map((_, i) => this.view!.colorOf(i));
     this.hud.setup(this.world, colors, PLAYER);
@@ -185,9 +195,14 @@ class App {
     this.acc += dt;
     let steps = 0;
     while (this.acc >= DT && steps < 8) {
-      const inp = this.input.sample(DT);
+      // Inputs are rounded and recorded so the server can replay this flight exactly.
+      const inp = quantize(this.input.sample(DT));
+      if (!this.final) this.recorder.push(inp);
       view.capturePrev();
       w.step([inp]);
+      if (!this.final && this.solo && playerFinished(w, PLAYER)) {
+        this.final = { score: soloScore(w, PLAYER, this.solo.difficulty), ticks: this.recorder.length };
+      }
       if (w.events.length) {
         view.handleEvents(w.events);
         this.onEvents(w, w.events);
@@ -201,7 +216,7 @@ class App {
     const portrait = isTouchDevice() && window.innerHeight > window.innerWidth;
     this.hud.update(w, PLAYER, dt, portrait);
     const g = w.gliders[PLAYER];
-    if (g.alive && w.phase !== 'countdown') this.sound.updateEngine(g.speed, g.boosting, g.wallDist);
+    if (g.alive && w.phase !== 'countdown') this.sound.updateEngine(g.speed, g.boosting, g.wallDist, this.hud.boundaryDist);
 
     if (this.endAt && now >= this.endAt) this.finish();
   }
@@ -294,37 +309,65 @@ class App {
 
   private finish(): void {
     const w = this.world;
-    if (!w) return;
+    const solo = this.solo;
+    if (!w || !solo) return;
     this.endAt = 0;
     const g = w.gliders[PLAYER];
-    const won = w.winner === PLAYER && g.alive;
-    const time = g.alive ? w.flyTime : Math.max(0, (g.crashTick - COUNTDOWN_TICKS) / TICK_RATE);
+    const score = this.final?.score ?? soloScore(w, PLAYER, solo.difficulty);
     const id = w.spec.id;
     const rec = this.profile.records[id] ?? { bestTime: 0, wins: 0, flights: 0 };
     rec.flights += 1;
-    if (won) rec.wins += 1;
-    const newBest = time > rec.bestTime;
-    if (newBest) rec.bestTime = time;
+    if (score.won) rec.wins += 1;
+    if (score.time > rec.bestTime) rec.bestTime = score.time;
     this.profile.records[id] = rec;
+    const localRank = addLocalScore(this.profile, id, {
+      score: score.score,
+      time: score.time,
+      won: score.won,
+      place: score.place,
+      pilots: score.pilots,
+      difficulty: solo.difficulty,
+      bots: solo.bots,
+      date: new Date().toISOString(),
+    });
     saveProfile(this.profile);
 
     const result: ResultInfo = {
-      won,
-      place: won ? 1 : g.place || w.aliveCount() + 1,
-      pilots: w.gliders.length,
-      time,
-      best: rec.bestTime,
-      newBest,
-      cause: won ? 'Every other pilot is down. The sky is yours.' : g.crash ? this.causeText(w, g.crash) : '',
+      score,
+      difficulty: solo.difficulty,
+      cause: score.won ? 'Every other pilot is down. The sky is yours.' : g.crash ? this.causeText(w, g.crash) : '',
       level: w.spec,
+      localRank,
     };
     this.state = 'menu';
     this.input.capturing = false;
     this.sound.stopEngine();
     this.hud.hide();
     this.touch.hide();
+    const canPost = !!this.final && !!this.profile.callsign;
+    this.menu.setOnlineStatus(canPost ? 'Posting your score to the online leaderboard…' : '');
     this.menu.show('result', result);
     this.releaseWakeLock();
+    if (canPost && this.final) this.post(solo, this.final);
+  }
+
+  /** Sends the finished flight to the online leaderboard. */
+  private post(solo: SoloSetup, final: { score: SoloScore; ticks: number }): void {
+    void submitScore({
+      callsign: this.profile.callsign,
+      key: this.profile.pilotKey,
+      setup: solo,
+      replay: this.recorder.encode(final.ticks),
+      score: final.score.score,
+    }).then((res) => {
+      if (!res.ok) {
+        this.menu.setOnlineStatus(onlineErrorText(res.error));
+      } else if (res.improved) {
+        this.menu.setOnlineStatus(res.rank === 1 ? 'Online: you lead the leaderboard.' : `Online: #${res.rank} of all pilots.`);
+      } else {
+        this.menu.setOnlineStatus(`Your online best here is ${formatScore(res.best)}, #${res.rank} of all pilots.`);
+      }
+    });
   }
 
   private goFullscreen(): void {

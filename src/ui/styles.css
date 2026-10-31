@@ -448,6 +448,24 @@ body {
   overflow-x: auto;
 }
 
+.keys.board td.num {
+  font-family: var(--f-data);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.keys.board tr.me td {
+  background: rgba(10, 10, 10, 0.1);
+  font-weight: 700;
+}
+
+.m-sub {
+  margin: 6px 0 -8px;
+  font: 800 16px/1.2 var(--f-display);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 kbd {
   font: 600 13px var(--f-data);
   border: 1.5px solid var(--ink);
@@ -643,6 +661,37 @@ kbd {
   border: 1.5px solid rgba(255, 255, 255, 0.4);
   border-radius: 50%;
   cursor: pointer;
+}
+
+.h-alert {
+  left: 50%;
+  bottom: calc(17% + var(--safe-b));
+  transform: translateX(-50%);
+  font: 600 clamp(14px, 1.8vw, 18px) / 1 var(--f-data);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #fff;
+  padding: 8px 12px;
+  background: rgba(200, 30, 30, 0.55);
+  border: 1.5px solid rgba(255, 120, 110, 0.9);
+}
+
+.h-alert.close {
+  background: rgba(230, 20, 20, 0.85);
+  animation: blink 0.4s steps(2, end) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .h-alert.close {
+    animation: none;
+  }
 }
 
 .h-hint {

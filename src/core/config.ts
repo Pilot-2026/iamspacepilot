@@ -1,3 +1,10 @@
+/**
+ * Version of the simulation rules. Online scores are verified by replaying the
+ * flight on the server, so client and server must run the same rules. Bump this
+ * whenever a change alters how a flight plays out.
+ */
+export const CORE_VERSION = 'core-1';
+
 /** Fixed simulation rate. Every device steps the world exactly this often. */
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
