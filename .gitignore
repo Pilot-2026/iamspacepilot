@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.netlify/
+.vite/
+*.log
+.DS_Store
+.env
+.env.*
+coverage/

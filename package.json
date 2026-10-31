@@ -1,0 +1,26 @@
+{
+  "name": "iamspacepilot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "iamSpacePilot: a 3D light-wall flying game for the browser.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fontsource/barlow": "5.2.5",
+    "@fontsource/chakra-petch": "5.2.5",
+    "@fontsource/unbounded": "5.2.5",
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.170.0",
+    "typescript": "5.7.3",
+    "vite": "6.0.7",
+    "vitest": "3.0.5"
+  }
+}
