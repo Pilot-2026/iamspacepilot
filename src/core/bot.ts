@@ -73,7 +73,10 @@ export function botThink(w: World, i: number): void {
   let aimDist = 1e9;
   let bestD2 = 80 * 80;
   let target = -1;
+  // No hunting in the first seconds: everyone needs room to spread out first.
+  const huntAllowed = w.flyTime > 6;
   for (const o of w.gliders) {
+    if (!huntAllowed) break;
     if (o.id === i || !o.alive) continue;
     const d2 = o.p.distSq(p);
     if (d2 >= bestD2) continue;
@@ -157,6 +160,18 @@ function freeDistance(w: World, i: number, R: number, look: number): number {
   let free = w.probe(i, p, d, look);
   const exit = rayExit(w.spec.arena, R, p.x, p.y, p.z, d.x, d.y, d.z) - 6;
   if (exit < free) free = exit < 0 ? 0 : exit;
+  // The deadly core counts as an obstacle with a safety margin.
+  const core = w.spec.core;
+  if (core) {
+    const rr = core.radius + 10;
+    const b = p.x * d.x + p.y * d.y + p.z * d.z;
+    const c = p.x * p.x + p.y * p.y + p.z * p.z - rr * rr;
+    const disc = b * b - c;
+    if (disc > 0) {
+      const t = -b - Math.sqrt(disc);
+      if (t > 0 && t < free) free = t;
+    }
+  }
   // Other gliders count as obstacles too, so bots do not fly into each other.
   for (const o of w.gliders) {
     if (o.id === i || !o.alive) continue;

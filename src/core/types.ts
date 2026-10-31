@@ -1,4 +1,14 @@
-export type LevelId = 'cloud-sea' | 'storm-eye';
+export type LevelId =
+  | 'cloud-sea'
+  | 'storm-eye'
+  | 'frost-heights'
+  | 'jet-stream'
+  | 'aurora'
+  | 'orbit'
+  | 'moon-shadow'
+  | 'ring-world'
+  | 'nebula'
+  | 'lattice-core';
 export type Difficulty = 'rookie' | 'pilot' | 'ace';
 
 /** What a pilot wants to do during one tick. All axes run from -1 to 1. */
@@ -14,7 +24,7 @@ export interface PilotInput {
 
 export const NEUTRAL_INPUT: Readonly<PilotInput> = { steerX: 0, steerY: 0, roll: 0, boost: false };
 
-export type CrashKind = 'wall' | 'shield' | 'floor' | 'ceiling' | 'collision' | 'lightning';
+export type CrashKind = 'wall' | 'shield' | 'floor' | 'ceiling' | 'collision' | 'lightning' | 'core';
 
 export interface CrashInfo {
   kind: CrashKind;

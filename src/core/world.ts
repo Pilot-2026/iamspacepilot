@@ -186,6 +186,17 @@ export class World {
         const d2 = g.p.x * g.p.x + g.p.z * g.p.z;
         if (d2 < up.radius * up.radius) g.p.y += up.strength * DT * (1 - Math.sqrt(d2) / up.radius);
       }
+      const wind = spec.wind;
+      if (wind) {
+        g.p.x += wind.x * DT;
+        g.p.z += wind.z * DT;
+      }
+      const core = spec.core;
+      if (core) {
+        // The core pulls harder the closer you get.
+        const d = g.p.length();
+        if (d > 1e-6 && d < core.reach) g.p.addScaled(g.p, (-core.pull * DT * (1 - d / core.reach)) / d);
+      }
     }
 
     if (this.flyTicks % SAMPLE_TICKS === 0) {
@@ -352,6 +363,9 @@ export class World {
         if (d2 < br2) return { kind: 'lightning', by: -1, seg: -1 };
       }
     }
+
+    const core = this.spec.core;
+    if (core && p.lengthSq() < core.radius * core.radius) return { kind: 'core', by: -1, seg: -1 };
 
     const kind = boundaryHit(this.spec.arena, R, p);
     return kind ? { kind, by: -1, seg: -1 } : null;

@@ -183,11 +183,11 @@ export class GameView {
 
     for (let k = 0; k < world.rings.length; k++) {
       const g = new THREE.Group();
-      g.add(new THREE.Mesh(new THREE.TorusGeometry(RING_RADIUS, 0.35, 10, 64), new THREE.MeshBasicMaterial({ color: 0xffc36b })));
+      g.add(new THREE.Mesh(new THREE.TorusGeometry(RING_RADIUS, 0.35, 10, 64), new THREE.MeshBasicMaterial({ color: env.ringColor })));
       g.add(
         new THREE.Mesh(
           new THREE.TorusGeometry(RING_RADIUS, 1.4, 8, 64),
-          new THREE.MeshBasicMaterial({ color: 0xff9a4a, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending }),
+          new THREE.MeshBasicMaterial({ color: env.ringColor, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending }),
         ),
       );
       this.scene.add(g);
@@ -273,7 +273,7 @@ export class GameView {
 
     this.flashLevel = Math.max(0, this.flashLevel - dt * 2.5);
     env.flash(this.flashLevel * (0.6 + 0.4 * Math.abs(Math.sin(this.time * 70))));
-    env.update(w, this.time, dt);
+    env.update(w, this.time, dt, this.camera);
     env.dome.position.copy(this.camera.position);
     this.updateDust(w);
 
@@ -428,7 +428,7 @@ export class GameView {
         const mesh = new THREE.Mesh(
           new THREE.TubeGeometry(path, 48, 0.55, 6, false),
           new THREE.MeshBasicMaterial({
-            color: 0xf3ecff,
+            color: this.env?.boltColor ?? 0xf3ecff,
             transparent: true,
             opacity: 0,
             depthWrite: false,
@@ -439,7 +439,7 @@ export class GameView {
         const glow = new THREE.Sprite(
           new THREE.SpriteMaterial({
             map: sharedTextures().glow,
-            color: 0x9c84ff,
+            color: this.env?.boltGlow ?? 0x9c84ff,
             transparent: true,
             opacity: 0,
             depthWrite: false,

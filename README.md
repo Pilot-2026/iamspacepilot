@@ -7,7 +7,8 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 ## Status: solo build with highscores
 
 - Free flight (turn, pitch, roll). The light wall rolls with your glider: fly level and it stands upright, roll 90° and it lies flat, keep rolling and it twists into a spiral.
-- Two levels: **Cloud Sea** (3 km, sunset, boost rings) and **Storm Eye** (12 km, turning storm wall, updraft, lightning that leaves deadly bolts).
+- Ten levels, each with its own look, climbing from the sky into deep space: Cloud Sea, Storm Eye (lightning, updraft), Frost Heights, Jet Stream (wind), Aurora, Orbit, Moon Shadow, Ring World, Nebula (plasma bolts) and Lattice Core (a core that pulls you in). Win a level to open the next one.
+- Cheat for testing: press 1 five times, or tap the score five times, to jump to the next level.
 - 1 to 7 bots in three difficulties (Rookie, Pilot, Ace).
 - The arena shield closes in after 30 seconds.
 - Boost: hold to speed up, refill it by flying close along walls or through rings.
@@ -77,4 +78,4 @@ The deterministic core is the groundwork for online play: the same code will run
 2. **Phase 2 (started):** online leaderboard with verified scores (done). Next: daily challenge, ghost runs, pilot code to use a callsign on several devices.
 3. **Phase 3:** online matches with up to 8 pilots, public or private, free-for-all or two teams of four.
 4. **Phase 4:** live voice radio (LiveKit) with mute, block and report.
-5. **Phase 5:** levels 3 to 5 (Aurora, Orbit, Lattice Core) and the rank ladder up to Space Pilot.
+5. **Phase 5:** rank ladder up to Space Pilot.

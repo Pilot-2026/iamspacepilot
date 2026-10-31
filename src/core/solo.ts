@@ -89,3 +89,19 @@ export function replaySolo(setup: SoloSetup, inputs: readonly PilotInput[]): { r
   }
   return null;
 }
+
+/** Score so far while the round is still running, for the HUD. */
+export function liveScore(w: World, player: number, difficulty: Difficulty): number {
+  const g = w.gliders[player];
+  if (!g.alive || w.phase === 'over') return soloScore(w, player, difficulty).score;
+  const time = w.phase === 'countdown' ? 0 : w.flyTicks / TICK_RATE;
+  let down = 0;
+  let cutoffs = 0;
+  for (const o of w.gliders) {
+    if (o.id === player) continue;
+    if (!o.alive) down++;
+    if (o.crash && o.crash.kind === 'wall' && o.crash.by === player) cutoffs++;
+  }
+  const base = time * POINTS.perSecond + down * POINTS.perPilotOutlasted + cutoffs * POINTS.perCutoff + g.rings * POINTS.perRing;
+  return Math.round(base * DIFFICULTY_FACTOR[difficulty]);
+}

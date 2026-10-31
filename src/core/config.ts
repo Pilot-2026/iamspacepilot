@@ -3,7 +3,7 @@
  * flight on the server, so client and server must run the same rules. Bump this
  * whenever a change alters how a flight plays out.
  */
-export const CORE_VERSION = 'core-1';
+export const CORE_VERSION = 'core-2';
 
 /** Fixed simulation rate. Every device steps the world exactly this often. */
 export const TICK_RATE = 60;
