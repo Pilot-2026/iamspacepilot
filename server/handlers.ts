@@ -131,6 +131,8 @@ export async function handleScore(req: Request, deps: Deps): Promise<Response> {
         difficulty: sub.setup.difficulty,
         bots: sub.setup.bots,
         cutoffs: r.cutoffs,
+        shotDowns: r.shotDowns,
+        hits: r.hits,
         rings: r.rings,
         at: now,
       });

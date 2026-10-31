@@ -295,6 +295,30 @@ class App {
         case 'bolt-strike':
           this.sound.thunder();
           break;
+        case 'shot': {
+          if (e.id === this.local) {
+            this.sound.shot(1);
+          } else {
+            const me = w.gliders[this.local];
+            const d = Math.sqrt(w.gliders[e.id].p.distSq(me.p));
+            if (d < 140) this.sound.shot(0.3 * (1 - d / 140));
+          }
+          break;
+        }
+        case 'hit':
+          if (e.id === this.local) {
+            this.hud.damage();
+            this.sound.hit(true);
+          } else if (e.by === this.local) {
+            this.hud.hitMarker();
+            this.sound.hitConfirm();
+          } else {
+            this.sound.hit(false);
+          }
+          break;
+        case 'overheat':
+          if (e.id === this.local) this.sound.overheat();
+          break;
         case 'crash': {
           const g = w.gliders[e.id];
           this.sound.crash(e.id === this.local);
@@ -338,6 +362,8 @@ class App {
         return `${name} was struck by lightning`;
       case 'core':
         return `${name} flew into the core`;
+      case 'shot':
+        return `${name} was shot down by ${w.gliders[c.by]?.name ?? 'a pilot'}`;
       case 'left':
         return `${name} left the game`;
     }
@@ -364,6 +390,10 @@ class App {
         return short ? 'Lightning' : 'Lightning struck you.';
       case 'core':
         return short ? 'The core' : 'You flew into the core.';
+      case 'shot': {
+        const n = w.gliders[c.by]?.name ?? 'a pilot';
+        return short ? `Shot down by ${n}` : `${n} shot you down.`;
+      }
       case 'left':
         return short ? 'Left the game' : 'You left the game.';
     }

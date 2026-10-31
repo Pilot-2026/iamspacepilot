@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { GUN } from '../src/core/config';
+import { Quat } from '../src/core/math';
 import type { CrashInfo, PilotInput } from '../src/core/types';
 import type { World } from '../src/core/world';
 import { GAME_VERSION, NEXT_ROUND_MS, OnlineMatch, type MatchSettings, type Msg, type Peer, type RoundResult, type Transport } from '../src/online/match';
@@ -312,6 +314,48 @@ describe('online match', () => {
     const t0 = alive.filter((g) => g.team === 0).length;
     const t1 = alive.filter((g) => g.team === 1).length;
     expect(a.results[0].team).toBe(t0 > t1 ? 0 : t1 > t0 ? 1 : -1);
+  });
+
+  it('shows shots on every device; the device of the target decides hits and shoot-downs', () => {
+    const net = new FakeNet();
+    const a = net.join('Alpha', { bots: 0 });
+    const b = net.join('Bravo');
+    net.deliver();
+    a.match.startRound();
+    net.deliver();
+    fly(net, 180);
+    // Each device puts its own glider on the line: Alpha behind Bravo, both flying +Z.
+    const put = (w: World, i: number, z: number) => {
+      const g = w.gliders[i];
+      g.p.set(0, 0, z);
+      g.pPrev.set(0, 0, z);
+      g.qb.copy(new Quat());
+      g.q.copy(new Quat());
+      g.bank = 0;
+    };
+    put(a.match.world!, 0, -30);
+    put(b.match.world!, 1, 20);
+    const straight: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false };
+    fly(net, 6, () => straight, 1);
+    // Only Bravo's device may report hits on Bravo's glider.
+    a.match.receive('Mallory', { t: 'h', r: 1, id: 1, by: 0, k: 5, hull: 0 });
+    expect(a.match.world!.gliders[1].hull).toBe(GUN.hull);
+    let seen = 0;
+    for (let k = 0; k < 3; k++) {
+      fly(net, 1, (n) => (n === a ? { ...straight, fire: true } : straight), 1);
+      for (let t = 0; t < 14; t++) {
+        fly(net, 1, () => straight, 1);
+        seen += b.match.world!.events.filter((e) => e.type === 'shot' && e.id === 0).length;
+      }
+    }
+    fly(net, 90, () => straight, 1);
+    expect(seen).toBe(3);
+    const wa = a.match.world!;
+    const wb = b.match.world!;
+    expect(wb.gliders[1].crash).toMatchObject({ kind: 'shot', by: 0 });
+    expect(wa.gliders[1].alive).toBe(false);
+    expect(wa.gliders[1].crash).toMatchObject({ kind: 'shot', by: 0 });
+    expect(wa.gliders[0].hits).toBe(GUN.hull);
   });
 
   it('warns about pilots on another game version', () => {

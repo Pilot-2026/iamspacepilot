@@ -28,6 +28,8 @@ export const POINTS = {
   perSecond: 10,
   perPilotOutlasted: 100,
   perCutoff: 250,
+  perShotDown: 200,
+  perHit: 25,
   perRing: 50,
   win: 500,
 } as const;
@@ -43,6 +45,10 @@ export interface SoloScore {
   outlasted: number;
   /** Pilots that crashed into your wall. */
   cutoffs: number;
+  /** Pilots you shot down. */
+  shotDowns: number;
+  /** Hits you landed. */
+  hits: number;
   rings: number;
   factor: number;
 }
@@ -62,18 +68,22 @@ export function soloScore(w: World, player: number, difficulty: Difficulty): Sol
   const place = won ? 1 : g.place || w.aliveCount() + 1;
   const outlasted = Math.max(0, pilots - place);
   let cutoffs = 0;
+  let shotDowns = 0;
   for (const o of w.gliders) {
-    if (o.id === player || !o.crash || o.crash.kind !== 'wall' || o.crash.by !== player) continue;
-    if (o.crashTick <= endTick) cutoffs++;
+    if (o.id === player || !o.crash || o.crash.by !== player || o.crashTick > endTick) continue;
+    if (o.crash.kind === 'wall') cutoffs++;
+    else if (o.crash.kind === 'shot') shotDowns++;
   }
   const factor = DIFFICULTY_FACTOR[difficulty];
   const base =
     time * POINTS.perSecond +
     outlasted * POINTS.perPilotOutlasted +
     cutoffs * POINTS.perCutoff +
+    shotDowns * POINTS.perShotDown +
+    g.hits * POINTS.perHit +
     g.rings * POINTS.perRing +
     (won ? POINTS.win : 0);
-  return { score: Math.round(base * factor), time, won, place, pilots, outlasted, cutoffs, rings: g.rings, factor };
+  return { score: Math.round(base * factor), time, won, place, pilots, outlasted, cutoffs, shotDowns, hits: g.hits, rings: g.rings, factor };
 }
 
 /**
@@ -97,11 +107,21 @@ export function liveScore(w: World, player: number, difficulty: Difficulty): num
   const time = w.phase === 'countdown' ? 0 : w.flyTicks / TICK_RATE;
   let down = 0;
   let cutoffs = 0;
+  let shotDowns = 0;
   for (const o of w.gliders) {
     if (o.id === player) continue;
     if (!o.alive) down++;
-    if (o.crash && o.crash.kind === 'wall' && o.crash.by === player) cutoffs++;
+    if (o.crash && o.crash.by === player) {
+      if (o.crash.kind === 'wall') cutoffs++;
+      else if (o.crash.kind === 'shot') shotDowns++;
+    }
   }
-  const base = time * POINTS.perSecond + down * POINTS.perPilotOutlasted + cutoffs * POINTS.perCutoff + g.rings * POINTS.perRing;
+  const base =
+    time * POINTS.perSecond +
+    down * POINTS.perPilotOutlasted +
+    cutoffs * POINTS.perCutoff +
+    shotDowns * POINTS.perShotDown +
+    g.hits * POINTS.perHit +
+    g.rings * POINTS.perRing;
   return Math.round(base * DIFFICULTY_FACTOR[difficulty]);
 }

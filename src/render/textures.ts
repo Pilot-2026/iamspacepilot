@@ -56,9 +56,34 @@ export function cloudTexture(seed: number): THREE.CanvasTexture {
   });
 }
 
-let shared: { glow: THREE.Texture; soft: THREE.Texture } | null = null;
+/** Aiming circle with four ticks. */
+export function reticleTexture(): THREE.CanvasTexture {
+  return canvasTexture(128, 128, (x) => {
+    x.strokeStyle = 'rgba(255,255,255,0.95)';
+    x.lineWidth = 6;
+    x.beginPath();
+    x.arc(64, 64, 34, 0, Math.PI * 2);
+    x.stroke();
+    x.lineWidth = 7;
+    for (const [ax, ay] of [
+      [0, -1],
+      [0, 1],
+      [-1, 0],
+      [1, 0],
+    ]) {
+      x.beginPath();
+      x.moveTo(64 + ax * 44, 64 + ay * 44);
+      x.lineTo(64 + ax * 60, 64 + ay * 60);
+      x.stroke();
+    }
+    x.fillStyle = 'rgba(255,255,255,0.95)';
+    x.fillRect(61, 61, 6, 6);
+  });
+}
 
-export function sharedTextures(): { glow: THREE.Texture; soft: THREE.Texture } {
-  if (!shared) shared = { glow: glowTexture(), soft: softTexture() };
+let shared: { glow: THREE.Texture; soft: THREE.Texture; reticle: THREE.Texture } | null = null;
+
+export function sharedTextures(): { glow: THREE.Texture; soft: THREE.Texture; reticle: THREE.Texture } {
+  if (!shared) shared = { glow: glowTexture(), soft: softTexture(), reticle: reticleTexture() };
   return shared;
 }

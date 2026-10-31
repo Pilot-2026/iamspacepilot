@@ -3,10 +3,10 @@
  * flight on the server, so client and server must run the same rules. Bump this
  * whenever a change alters how a flight plays out.
  */
-export const CORE_VERSION = 'core-2';
+export const CORE_VERSION = 'core-3';
 
 /** Version of the online message format. Devices with different versions cannot play together. */
-export const NET_PROTOCOL = 'p1';
+export const NET_PROTOCOL = 'p2';
 /** Pilots per online game, bots included. */
 export const MAX_ONLINE_PILOTS = 8;
 
@@ -53,3 +53,38 @@ export const FLIGHT = {
   slipRange: 7,
   ringBoost: 0.45,
 } as const;
+
+/**
+ * The gun. Shots fly through walls and only hit other gliders. They curve a
+ * little towards a glider in front of them. Every shot heats the gun; at full
+ * heat it locks until it has cooled down.
+ */
+export const GUN = {
+  /** Shot speed in m/s. */
+  speed: 85,
+  /** Ticks a shot lives (about 125 m). */
+  life: 88,
+  /** Ticks between two shots while the trigger is held. */
+  interval: 12,
+  heatPerShot: 0.22,
+  /** Heat lost per second. */
+  cool: 0.36,
+  /** An overheated gun works again below this heat. */
+  unlock: 0.3,
+  /** How strongly a shot turns towards its target each tick. */
+  homing: 0.035,
+  /** Targets within this cone (cos of the half angle) and range pull the shot. */
+  homingCone: 0.87,
+  homingRange: 110,
+  /** A shot hits when it passes this close to a glider's centre. */
+  hitRadius: 2.3,
+  /** Hits a glider takes before it goes down. */
+  hull: 3,
+  /** Boost energy a hit knocks out. */
+  energyHit: 0.2,
+  /** The shot leaves the glider this far in front of its centre. */
+  muzzle: 3,
+} as const;
+
+/** Shot keys: owner * SHOT_KEY + running number of that owner's shots. */
+export const SHOT_KEY = 65536;

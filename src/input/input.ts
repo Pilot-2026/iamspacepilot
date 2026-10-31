@@ -27,7 +27,9 @@ export class InputManager {
   private ky = 0;
   private kr = 0;
   private padPause = false;
-  private readonly out: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false };
+  /** Left mouse button held on the 3D view. */
+  private mouseFire = false;
+  private readonly out: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false };
 
   private readonly cheatTaps: number[] = [];
 
@@ -51,7 +53,17 @@ export class InputManager {
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.mouseFire = false;
+    });
+    // Mouse: hold the left button on the 3D view to fire.
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0 && this.capturing && (e.target as HTMLElement | null)?.id === 'scene') this.mouseFire = true;
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseFire = false;
+    });
   }
 
   /** True while flying: arrow keys and space must not scroll the page. */
@@ -59,6 +71,7 @@ export class InputManager {
 
   reset(): void {
     this.keys.clear();
+    this.mouseFire = false;
     this.kx = 0;
     this.ky = 0;
     this.kr = 0;
@@ -96,6 +109,7 @@ export class InputManager {
     let py = 0;
     let pr = 0;
     let pb = false;
+    let pf = false;
     let pause = false;
     const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
     for (const pad of pads) {
@@ -105,6 +119,7 @@ export class InputManager {
       if (pad.buttons[4]?.pressed) pr -= 1;
       if (pad.buttons[5]?.pressed) pr += 1;
       if ((pad.buttons[7]?.value ?? 0) > 0.3 || pad.buttons[0]?.pressed) pb = true;
+      if ((pad.buttons[6]?.value ?? 0) > 0.3 || pad.buttons[2]?.pressed) pf = true;
       if (pad.buttons[9]?.pressed) pause = true;
     }
     if (pause && !this.padPause) this.onPauseKey();
@@ -116,6 +131,7 @@ export class InputManager {
     this.out.steerY = this.invertPitch ? -sy : sy;
     this.out.roll = clamp(this.kr + pr + t.roll, -1, 1);
     this.out.boost = this.key('Space') || pb || t.boost;
+    this.out.fire = this.key('KeyF', 'ControlRight', 'ShiftRight') || this.mouseFire || pf || t.fire;
     return this.out;
   }
 }

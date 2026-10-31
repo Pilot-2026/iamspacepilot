@@ -7,6 +7,7 @@ export interface TouchState {
   steerY: number;
   roll: number;
   boost: boolean;
+  fire: boolean;
   /** Online: radio microphone open (tap to switch). */
   talk: boolean;
 }
@@ -19,10 +20,10 @@ const ROLL_LEFT_ICON =
 const ROLL_RIGHT_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>';
 
-type Hold = 'boost' | 'roll-l' | 'roll-r';
+type Hold = 'boost' | 'roll-l' | 'roll-r' | 'fire';
 
 export class TouchControls {
-  readonly state: TouchState = { steerX: 0, steerY: 0, roll: 0, boost: false, talk: false };
+  readonly state: TouchState = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false, talk: false };
   private readonly talkBtn: HTMLElement;
   private readonly stick: HTMLElement;
   private readonly knob: HTMLElement;
@@ -39,6 +40,7 @@ export class TouchControls {
       <div class="t-btn t-roll-l" data-hold="roll-l" aria-label="Roll left">${ROLL_LEFT_ICON}</div>
       <div class="t-btn t-roll-r" data-hold="roll-r" aria-label="Roll right">${ROLL_RIGHT_ICON}</div>
       <div class="t-btn t-boost" data-hold="boost">Boost</div>
+      <div class="t-btn t-fire" data-hold="fire">Fire</div>
       <div class="t-btn t-talk" data-talk aria-label="Talk on the radio" hidden>${MIC_ICON}</div>`;
     this.talkBtn = root.querySelector('.t-talk') as HTMLElement;
     this.stick = root.querySelector('.t-stick') as HTMLElement;
@@ -47,6 +49,7 @@ export class TouchControls {
       boost: root.querySelector('.t-boost') as HTMLElement,
       'roll-l': root.querySelector('.t-roll-l') as HTMLElement,
       'roll-r': root.querySelector('.t-roll-r') as HTMLElement,
+      fire: root.querySelector('.t-fire') as HTMLElement,
     };
     root.addEventListener('pointerdown', (e) => this.down(e));
     root.addEventListener('pointermove', (e) => this.move(e));
@@ -98,6 +101,7 @@ export class TouchControls {
     this.state.steerY = 0;
     this.state.roll = 0;
     this.state.boost = false;
+    this.state.fire = false;
     this.stick.classList.remove('active');
     this.knob.style.transform = '';
     for (const b of Object.values(this.buttons)) b.classList.remove('on');
@@ -175,6 +179,7 @@ export class TouchControls {
   private applyHolds(): void {
     const active = new Set(this.holds.values());
     this.state.boost = active.has('boost');
+    this.state.fire = active.has('fire');
     this.state.roll = (active.has('roll-r') ? 1 : 0) - (active.has('roll-l') ? 1 : 0);
     for (const [k, el] of Object.entries(this.buttons)) el.classList.toggle('on', active.has(k as Hold));
   }

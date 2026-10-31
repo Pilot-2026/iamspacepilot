@@ -791,6 +791,91 @@ kbd {
   white-space: nowrap;
 }
 
+/* Gun: hull diamonds and gun heat in one row under the boost bar. */
+.h-gun {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.h-hull {
+  display: flex;
+  gap: 5px;
+  padding: 0 2px;
+}
+
+.h-hull i {
+  width: 9px;
+  height: 9px;
+  transform: rotate(45deg);
+  border: 1.5px solid var(--hud);
+}
+
+.h-hull i.on {
+  background: var(--hud);
+  box-shadow: 0 0 6px var(--hud);
+}
+
+.h-hull.hurt i {
+  border-color: var(--warn);
+  animation: blink 0.25s steps(2, end) infinite;
+}
+
+.h-gun .h-heat {
+  display: block;
+  width: clamp(48px, 7vw, 86px);
+  height: 5px;
+  margin-top: 0;
+}
+
+.h-heat i {
+  width: 0;
+  background: #ffb347;
+  box-shadow: 0 0 8px #ffb347;
+}
+
+.h-heat.hot i {
+  background: var(--warn);
+  box-shadow: 0 0 10px var(--warn);
+  animation: blink 0.3s steps(2, end) infinite;
+}
+
+.h-hitmark {
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  font: 700 13px/1 var(--f-data);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #fff;
+  padding: 5px 8px 5px 11px;
+  border: 1.5px solid currentColor;
+  opacity: 0;
+}
+
+.h-hitmark.show {
+  animation: hitmark 0.35s ease-out;
+}
+
+@keyframes hitmark {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.35);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .h-hull.hurt i,
+  .h-heat.hot i {
+    animation: none;
+  }
+}
+
 /* With touch controls the thumbs own the bottom corners, so radar and feed move up. */
 #hud.touch .h-radar {
   right: calc(12px + var(--safe-r));
@@ -802,7 +887,7 @@ kbd {
 #hud.touch .h-tr {
   left: calc(16px + var(--safe-l));
   right: auto;
-  top: calc(104px + var(--safe-t));
+  top: calc(128px + var(--safe-t));
   text-align: left;
 }
 
@@ -1217,6 +1302,13 @@ kbd {
   .h-radio i {
     animation: none;
   }
+}
+
+.t-fire {
+  right: calc(5% + 108px + var(--safe-r));
+  bottom: calc(9% + 70px + var(--safe-b));
+  width: 72px;
+  height: 72px;
 }
 
 .t-talk {

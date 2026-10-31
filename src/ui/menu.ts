@@ -718,7 +718,7 @@ export class Menu {
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span>v0.4 · Solo and online</span><span>Fly free. Leave light behind.</span>`,
+      `<span>v0.5 · Solo and online</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
@@ -768,6 +768,7 @@ export class Menu {
       <h2 class="m-title">Stay in the air. Make them hit your wall.</h2>
       <p class="m-text">Your glider leaves a wall of light. Every wall is deadly, yours too. So are the arena shield and the floor below. The shield closes in after 30 seconds. The last pilot flying wins.</p>
       <p class="m-text">The wall turns with your glider. Fly level and it stands upright. Roll 90° and it lies flat like a floor. Keep rolling and it twists into a spiral. Fly close along a wall to recharge your boost.</p>
+      <p class="m-text">Your gun fires shots that fly straight through walls and only hit other gliders. They curve a little towards a glider in front of them. Three hits bring a glider down, a ring repairs one hit. Hold the trigger too long and the gun overheats.</p>
       <div class="keys-wrap">
         <table class="keys">
           <thead><tr><th>Action</th><th>Keyboard</th><th>Gamepad</th><th>Touch</th></tr></thead>
@@ -776,6 +777,8 @@ export class Menu {
             <tr><td>Nose up, down</td><td><kbd>W</kbd> <kbd>S</kbd> or <kbd>↑</kbd> <kbd>↓</kbd></td><td>Left stick</td><td>Left thumb stick</td></tr>
             <tr><td>Roll</td><td><kbd>Q</kbd> <kbd>E</kbd></td><td>LB, RB</td><td>Roll buttons</td></tr>
             <tr><td>Boost</td><td><kbd>Space</kbd></td><td>RT or A</td><td>Boost button</td></tr>
+            <tr><td>Fire</td><td><kbd>F</kbd> or left click</td><td>LT or X</td><td>Fire button</td></tr>
+            <tr><td>Talk (online)</td><td>Hold <kbd>T</kbd></td><td>Y or d-pad up</td><td>Mic button</td></tr>
             <tr><td>Pause</td><td><kbd>Esc</kbd> or <kbd>P</kbd></td><td>Start</td><td>II button</td></tr>
           </tbody>
         </table>
@@ -828,6 +831,8 @@ export class Menu {
     const parts = [`${sc.time.toFixed(1)} s × ${POINTS.perSecond}`];
     if (sc.outlasted) parts.push(`${sc.outlasted} outlasted × ${POINTS.perPilotOutlasted}`);
     if (sc.cutoffs) parts.push(`${sc.cutoffs} hit your wall × ${POINTS.perCutoff}`);
+    if (sc.shotDowns) parts.push(`${sc.shotDowns} shot down × ${POINTS.perShotDown}`);
+    if (sc.hits) parts.push(`${sc.hits} ${sc.hits === 1 ? 'hit' : 'hits'} × ${POINTS.perHit}`);
     if (sc.rings) parts.push(`${sc.rings} ${sc.rings === 1 ? 'ring' : 'rings'} × ${POINTS.perRing}`);
     if (sc.won) parts.push(`win ${POINTS.win}`);
     const factor = DIFFICULTY_FACTOR[r.difficulty];
@@ -887,7 +892,7 @@ export class Menu {
       <div id="board-online"><p class="m-hint">Loading the online leaderboard…</p></div>
       <h3 class="m-sub">This device</h3>
       ${localTable}
-      <p class="m-hint">Score: ${POINTS.perSecond} per second in the air, ${POINTS.perPilotOutlasted} per pilot you outlast, ${POINTS.perCutoff} per pilot that hits your wall, ${POINTS.perRing} per ring, ${POINTS.win} for a win. Then times 1 for Rookie, 1.5 for Pilot, 2 for Ace. Online scores are checked by replaying your flight on the server.</p>
+      <p class="m-hint">Score: ${POINTS.perSecond} per second in the air, ${POINTS.perPilotOutlasted} per pilot you outlast, ${POINTS.perCutoff} per pilot that hits your wall, ${POINTS.perShotDown} per pilot you shoot down, ${POINTS.perHit} per hit, ${POINTS.perRing} per ring, ${POINTS.win} for a win. Then times 1 for Rookie, 1.5 for Pilot, 2 for Ace. Online scores are checked by replaying your flight on the server.</p>
       <div class="m-list"><button class="mi" data-act="back">Back ${ARROW}</button></div>`,
     );
   }
