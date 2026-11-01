@@ -1,3 +1,5 @@
+import { ROUNDEL } from './html';
+
 /**
  * The title sequence: words flash up, then the letters of iamSpacePilot fly in
  * from everywhere, flicker through other letters and lock into the title.
@@ -23,7 +25,7 @@ export function playIntro(root: HTMLElement, done: () => void): void {
   }
   root.innerHTML = `<section class="intro" aria-label="iamSpacePilot">
     <div class="intro-words" aria-hidden="true"></div>
-    <h1 class="wordmark intro-title" aria-label="iamSpacePilot">${letters}</h1>
+    <h1 class="wordmark intro-title" aria-label="iamSpacePilot">${letters}<span class="intro-roundel">${ROUNDEL}</span></h1>
     <p class="intro-tag">Fly free. Leave light behind.</p>
     <p class="intro-start">${touchFirst() ? 'Tap to start' : 'Press any key or click to start'}</p>
     <p class="intro-skip">${touchFirst() ? 'Tap to skip' : 'Press any key or click to skip'}</p>
@@ -77,6 +79,8 @@ export function playIntro(root: HTMLElement, done: () => void): void {
       el.textContent = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
     }
   }, 60);
+  // The round logo lands at the end of the title right after the big 3D one has flown past.
+  at(4.9, () => section.classList.add('logo'));
   at(5.2, () => section.classList.add('tagged'));
   // The title stays; only a tap or a key goes on to the menu.
   at(HOLD, () => section.classList.add('hold'));
@@ -105,6 +109,6 @@ export function playIntro(root: HTMLElement, done: () => void): void {
       el.style.opacity = '1';
       settled.add(el);
     }
-    section.classList.add('tagged', 'hold');
+    section.classList.add('tagged', 'hold', 'logo');
   }
 }

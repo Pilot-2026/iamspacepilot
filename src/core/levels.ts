@@ -36,11 +36,14 @@ export interface LevelSpec {
   core: { radius: number; pull: number; reach: number } | null;
 }
 
+/** All arenas are twice the size they were designed at: more room to fly. */
+const SCALE = 2;
+
 const dome = (radius: number, minRadius: number, floorY: number): ArenaSpec => ({
   kind: 'dome',
-  radius,
-  minRadius,
-  floorY,
+  radius: radius * SCALE,
+  minRadius: minRadius * SCALE,
+  floorY: floorY * SCALE,
   ceilY: 1e9,
   shrinkStart: 30,
   shrinkEnd: 90,
@@ -48,10 +51,10 @@ const dome = (radius: number, minRadius: number, floorY: number): ArenaSpec => (
 
 const tube = (radius: number, minRadius: number, floorY: number, ceilY: number): ArenaSpec => ({
   kind: 'cylinder',
-  radius,
-  minRadius,
-  floorY,
-  ceilY,
+  radius: radius * SCALE,
+  minRadius: minRadius * SCALE,
+  floorY: floorY * SCALE,
+  ceilY: ceilY * SCALE,
   shrinkStart: 30,
   shrinkEnd: 90,
 });
@@ -68,7 +71,7 @@ export const LEVELS: Record<LevelId, LevelSpec> = {
     floorName: 'the cloud sea',
     floorLabel: 'Cloud sea',
     arena: dome(110, 45, -40),
-    rings: 5,
+    rings: 8,
   },
   'storm-eye': {
     ...base,
@@ -79,7 +82,7 @@ export const LEVELS: Record<LevelId, LevelSpec> = {
     floorName: 'the storm',
     floorLabel: 'Storm floor',
     arena: tube(100, 45, -55, 70),
-    updraft: { radius: 18, strength: 9 },
+    updraft: { radius: 36, strength: 9 },
     lightning: true,
   },
   'frost-heights': {
@@ -91,7 +94,7 @@ export const LEVELS: Record<LevelId, LevelSpec> = {
     floorName: 'the cloud deck',
     floorLabel: 'Cloud deck',
     arena: dome(108, 44, -36),
-    rings: 6,
+    rings: 9,
   },
   'jet-stream': {
     ...base,
@@ -102,7 +105,7 @@ export const LEVELS: Record<LevelId, LevelSpec> = {
     floorName: 'the lower air',
     floorLabel: 'Low air',
     arena: tube(115, 48, -40, 50),
-    rings: 3,
+    rings: 5,
     wind: { x: 5, z: 0 },
   },
   aurora: {
@@ -114,7 +117,7 @@ export const LEVELS: Record<LevelId, LevelSpec> = {
     floorName: 'the atmosphere',
     floorLabel: 'Atmosphere',
     arena: tube(110, 45, -35, 45),
-    rings: 4,
+    rings: 6,
   },
   orbit: {
     ...base,
@@ -125,7 +128,7 @@ export const LEVELS: Record<LevelId, LevelSpec> = {
     floorName: 'the atmosphere',
     floorLabel: 'Atmosphere',
     arena: dome(105, 45, -45),
-    rings: 4,
+    rings: 6,
   },
   'moon-shadow': {
     ...base,
@@ -136,7 +139,7 @@ export const LEVELS: Record<LevelId, LevelSpec> = {
     floorName: 'the moon',
     floorLabel: 'Moon',
     arena: dome(100, 42, -30),
-    rings: 3,
+    rings: 5,
   },
   'ring-world': {
     ...base,
@@ -147,7 +150,7 @@ export const LEVELS: Record<LevelId, LevelSpec> = {
     floorName: 'the rings',
     floorLabel: 'Rings',
     arena: tube(118, 48, -36, 48),
-    rings: 6,
+    rings: 9,
   },
   nebula: {
     ...base,
@@ -169,7 +172,7 @@ export const LEVELS: Record<LevelId, LevelSpec> = {
     floorName: 'the lattice',
     floorLabel: 'Lattice',
     arena: dome(95, 42, -70),
-    core: { radius: 6, pull: 7, reach: 60 },
+    core: { radius: 9, pull: 7, reach: 120 },
   },
 };
 

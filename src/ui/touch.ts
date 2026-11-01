@@ -1,3 +1,4 @@
+import { countTap } from '../input/input';
 /**
  * Touch controls: a floating stick appears wherever the left thumb lands.
  * Boost and the two roll buttons sit in an arc around the right thumb.
@@ -46,6 +47,9 @@ export class TouchControls {
   /** Camera: zoom factor (< 1 comes closer), turn and tilt in radians. */
   onLook: (zoomMul: number, dYaw: number, dPitch: number) => void = () => undefined;
   onLookReset: () => void = () => undefined;
+  /** Cheat: five taps in the top right corner switch to the next ship. */
+  onShipCheat: () => void = () => undefined;
+  private readonly cornerTaps: number[] = [];
 
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `
@@ -157,6 +161,11 @@ export class TouchControls {
       return;
     }
     const here = { x: e.clientX, y: e.clientY };
+    const r0 = this.root.getBoundingClientRect();
+    if (e.clientX > r0.right - 90 && e.clientY < r0.top + 90) {
+      if (countTap(this.cornerTaps)) this.onShipCheat();
+      return;
+    }
     if (this.pinch) return;
     // A second free finger, or a second finger right after the stick finger: that is a pinch.
     const other = this.free.keys().next();

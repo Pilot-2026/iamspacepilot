@@ -79,16 +79,16 @@ export class Sound {
   private lastR = 0;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
+  /** Flight sound: only soft air rushing past, brighter when fast; no engine drone. */
   private engine: {
-    osc1: OscillatorNode;
-    osc2: OscillatorNode;
-    filter: BiquadFilterNode;
-    gain: GainNode;
     wind: AudioBufferSourceNode;
     windFilter: BiquadFilterNode;
     windGain: GainNode;
+    boosting: boolean;
   } | null = null;
   private volume = 0.8;
+  /** Sound effects on (music has its own switch). */
+  private effects = true;
   private nextWarn = 0;
   private nextShield = 0;
 
@@ -159,7 +159,7 @@ export class Sound {
       return;
     }
     this.master = this.ctx.createGain();
-    this.master.gain.value = this.volume;
+    this.master.gain.value = this.effects ? this.volume : 0;
     this.master.connect(this.ctx.destination);
     const len = this.ctx.sampleRate * 2;
     this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -225,7 +225,17 @@ export class Sound {
 
   setVolume(v: number): void {
     this.volume = v;
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+    this.applyEffects();
+  }
+
+  /** Sound effects on or off (the music and the radio voices are not affected). */
+  setSoundsEnabled(on: boolean): void {
+    this.effects = on;
+    this.applyEffects();
+  }
+
+  private applyEffects(): void {
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.effects ? this.volume : 0, this.ctx.currentTime, 0.05);
   }
 
   /** Pauses all audio (hidden tab). */
@@ -243,39 +253,20 @@ export class Sound {
   startEngine(): void {
     const ctx = this.ctx;
     if (!ctx || !this.master || !this.noise || this.engine) return;
-    const osc1 = ctx.createOscillator();
-    osc1.type = 'sawtooth';
-    osc1.frequency.value = 70;
-    const osc2 = ctx.createOscillator();
-    osc2.type = 'square';
-    osc2.frequency.value = 140.6;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 700;
-    filter.Q.value = 2;
-    const gain = ctx.createGain();
-    gain.gain.value = 0;
-    osc1.connect(filter);
-    osc2.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.master);
     const wind = ctx.createBufferSource();
     wind.buffer = this.noise;
     wind.loop = true;
     const windFilter = ctx.createBiquadFilter();
     windFilter.type = 'bandpass';
     windFilter.frequency.value = 900;
-    windFilter.Q.value = 0.7;
+    windFilter.Q.value = 0.6;
     const windGain = ctx.createGain();
     windGain.gain.value = 0;
     wind.connect(windFilter);
     windFilter.connect(windGain);
     windGain.connect(this.master);
-    osc1.start();
-    osc2.start();
-    wind.start();
-    gain.gain.setTargetAtTime(0.05, ctx.currentTime, 0.3);
-    this.engine = { osc1, osc2, filter, gain, wind, windFilter, windGain };
+    wind.start(0, Math.random());
+    this.engine = { wind, windFilter, windGain, boosting: false };
     this.man = this.makeManeuver(ctx, this.master, this.noise);
   }
 
@@ -300,7 +291,7 @@ export class Sound {
     const yawGain = gain();
     yawSrc.connect(yawFilter).connect(yawPan).connect(yawGain).connect(out);
     const climb = ctx.createOscillator();
-    climb.type = 'triangle';
+    climb.type = 'sine';
     climb.frequency.value = 260;
     const climbGain = gain();
     climb.connect(climbGain).connect(out);
@@ -308,12 +299,12 @@ export class Sound {
     const diveFilter = ctx.createBiquadFilter();
     diveFilter.type = 'lowpass';
     diveFilter.frequency.value = 400;
+    // No low hum when diving: just air, a little deeper than the turns.
     const diveSub = ctx.createOscillator();
     diveSub.type = 'sine';
-    diveSub.frequency.value = 68;
+    diveSub.frequency.value = 220;
     const diveGain = gain();
     diveSrc.connect(diveFilter).connect(diveGain);
-    diveSub.connect(diveGain);
     diveGain.connect(out);
     const roll = ctx.createOscillator();
     roll.type = 'square';
@@ -347,17 +338,17 @@ export class Sound {
     if (!m || !ctx) return;
     const t = ctx.currentTime;
     const ax = Math.abs(x);
-    m.yawGain.gain.setTargetAtTime(0.06 * ax, t, 0.06);
+    m.yawGain.gain.setTargetAtTime(0.035 * ax, t, 0.08);
     m.yawFilter.frequency.setTargetAtTime(x > 0 ? 1500 + 500 * ax : 820 - 200 * ax, t, 0.08);
     m.yawPan.pan.setTargetAtTime(x > 0 ? 0.7 : x < 0 ? -0.7 : 0, t, 0.08);
     const up = y > 0 ? y : 0;
     const down = y < 0 ? -y : 0;
-    m.climbGain.gain.setTargetAtTime(0.035 * up, t, 0.06);
-    m.climb.frequency.setTargetAtTime(240 + 190 * up, t, 0.1);
-    m.diveGain.gain.setTargetAtTime(0.07 * down, t, 0.06);
-    m.diveFilter.frequency.setTargetAtTime(300 + 1000 * down, t, 0.1);
+    m.climbGain.gain.setTargetAtTime(0.012 * up, t, 0.08);
+    m.climb.frequency.setTargetAtTime(520 + 260 * up, t, 0.1);
+    m.diveGain.gain.setTargetAtTime(0.04 * down, t, 0.08);
+    m.diveFilter.frequency.setTargetAtTime(600 + 900 * down, t, 0.1);
     const ar = Math.abs(r);
-    m.rollGain.gain.setTargetAtTime(0.03 * ar, t, 0.05);
+    m.rollGain.gain.setTargetAtTime(0.012 * ar, t, 0.05);
     m.roll.frequency.setTargetAtTime(130 + 80 * ar, t, 0.08);
     m.rollPan.pan.setTargetAtTime(r * 0.6, t, 0.08);
     // A short thruster puff when a move starts.
@@ -398,10 +389,7 @@ export class Sound {
     const ctx = this.ctx;
     if (!e || !ctx) return;
     const t = ctx.currentTime;
-    e.gain.gain.setTargetAtTime(0, t, 0.08);
     e.windGain.gain.setTargetAtTime(0, t, 0.08);
-    e.osc1.stop(t + 0.5);
-    e.osc2.stop(t + 0.5);
     e.wind.stop(t + 0.5);
     this.engine = null;
     const m = this.man;
@@ -419,13 +407,12 @@ export class Sound {
     const ctx = this.ctx;
     if (!e || !ctx) return;
     const t = ctx.currentTime;
-    const f = 48 + speed * 1.6;
-    e.osc1.frequency.setTargetAtTime(f, t, 0.1);
-    e.osc2.frequency.setTargetAtTime(f * 2.006, t, 0.1);
-    e.filter.frequency.setTargetAtTime(boosting ? 1800 : 650, t, 0.15);
-    e.gain.gain.setTargetAtTime(boosting ? 0.07 : 0.05, t, 0.15);
-    e.windFilter.frequency.setTargetAtTime(600 + speed * 22, t, 0.2);
-    e.windGain.gain.setTargetAtTime(0.02 + (speed / 38) * 0.06, t, 0.2);
+    // Soft air: higher and a little louder the faster you fly.
+    e.windFilter.frequency.setTargetAtTime(700 + speed * 26 + (boosting ? 900 : 0), t, 0.25);
+    e.windGain.gain.setTargetAtTime(0.012 + (speed / 38) * 0.03 + (boosting ? 0.015 : 0), t, 0.25);
+    // Speeding up: a short rising whoosh.
+    if (boosting && !e.boosting) this.whoosh();
+    e.boosting = boosting;
     if (wallDist < 6 && t >= this.nextWarn) {
       this.tone(1046, 0.05, 'square', 0.05, t);
       this.nextWarn = t + 0.07 + (wallDist / 6) * 0.35;
@@ -435,6 +422,36 @@ export class Sound {
       this.tone(392, 0.11, 'triangle', 0.12, t);
       this.nextShield = t + 0.12 + (Math.max(0, shieldDist) / 20) * 0.6;
     }
+  }
+
+  /** A rising rush of air when you speed up. */
+  private whoosh(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.noise) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = 1.2;
+    f.frequency.setValueAtTime(500, t);
+    f.frequency.exponentialRampToValueAtTime(2600, t + 0.45);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.07, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + 0.65);
+  }
+
+  /** Flying through a waterfall. */
+  splash(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    this.noiseBurst(0.45, 'bandpass', 2400, 500, 0.18, t);
+    this.noiseBurst(0.25, 'highpass', 5000, 2500, 0.08, t + 0.03);
   }
 
   click(): void {
@@ -493,8 +510,10 @@ export class Sound {
     const ctx = this.ctx;
     if (!ctx || gain <= 0.01) return;
     const t = ctx.currentTime;
-    this.tone(1650, 0.12, 'sawtooth', 0.06 * gain, t, 420);
-    this.noiseBurst(0.05, 'highpass', 3600, 2400, 0.035 * gain, t);
+    // A deep, punchy shot: a falling growl, a thump and a short burst of air.
+    this.tone(340, 0.16, 'sawtooth', 0.045 * gain, t, 80);
+    this.tone(130, 0.14, 'sine', 0.13 * gain, t, 48);
+    this.noiseBurst(0.09, 'lowpass', 1800, 260, 0.08 * gain, t);
   }
 
   /** A shot hits a glider: loud when it is yours. */

@@ -19,7 +19,27 @@ export interface BotBrain {
   fireRate: number;
   /** Lets the gun cool below this heat before firing again. */
   heatLimit: number;
+  /** The input the glider flies with: it eases towards the steering the bot decided on. */
   readonly input: PilotInput;
+  /** Steering the bot wants (decided every few ticks). */
+  readonly target: { x: number; y: number };
+  /** A wall or the shield is close: turn hard and fast. */
+  urgent: boolean;
+}
+
+/** How much the steering may change per tick: calm curves normally, quick turns in danger. */
+const STEER_EASE = 0.07;
+const STEER_EASE_URGENT = 0.2;
+
+/** Moves the bot's steering a step towards what it wants, every tick, so it flies smooth curves. */
+export function botSteer(b: BotBrain): void {
+  const rate = b.urgent ? STEER_EASE_URGENT : STEER_EASE;
+  const ease = (cur: number, want: number) => {
+    const dd = want - cur;
+    return dd > rate ? cur + rate : dd < -rate ? cur - rate : want;
+  };
+  b.input.steerX = ease(b.input.steerX, b.target.x);
+  b.input.steerY = ease(b.input.steerY, b.target.y);
 }
 
 const SKILL: Record<Difficulty, { interval: number; look: number; aggression: number; noise: number; aimCos: number; fireRate: number; heatLimit: number }> = {
@@ -45,6 +65,8 @@ export function makeBrain(skill: Difficulty, index: number): BotBrain {
     fireRate: s.fireRate,
     heatLimit: s.heatLimit,
     input: { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false, special: false },
+    target: { x: 0, y: 0 },
+    urgent: false,
   };
 }
 
@@ -85,7 +107,8 @@ export function botThink(w: World, i: number): void {
   // Nearest opponent: aim a little ahead of it to cut it off.
   let hasAim = false;
   let aimDist = 1e9;
-  let bestD2 = 80 * 80;
+  // The arenas are big: bots look for opponents and rings further away.
+  let bestD2 = 150 * 150;
   let target = -1;
   // No hunting in the first seconds: everyone needs room to spread out first.
   const huntAllowed = w.flyTime > 6;
@@ -117,7 +140,7 @@ export function botThink(w: World, i: number): void {
   let ringAim = false;
   if (!hasAim && huntAllowed) {
     g.qb.rotate(DIRS[0], tf);
-    let best2 = 70 * 70;
+    let best2 = 120 * 120;
     for (const ring of w.rings) {
       if (!ring.active) continue;
       const rx = ring.c.x - p.x;
@@ -136,7 +159,7 @@ export function botThink(w: World, i: number): void {
       best2 = d2;
       aim.set(rx, ry, rz);
     }
-    if (best2 < 70 * 70) {
+    if (best2 < 120 * 120) {
       aimDist = Math.sqrt(best2);
       aim.scale(1 / aimDist);
       hasAim = true;
@@ -178,7 +201,7 @@ export function botThink(w: World, i: number): void {
   }
 
   let toAim = false;
-  if (hasAim && !danger && aimDist < 70) {
+  if (hasAim && !danger && aimDist < 130) {
     const len = Math.min(aimDist, b.look);
     const free = w.probe(i, p, aim, len);
     const exit = rayExit(arena, R, p.x, p.y, p.z, aim.x, aim.y, aim.z);
@@ -188,12 +211,15 @@ export function botThink(w: World, i: number): void {
   else loc.copy(DIRS[bestK]);
 
   const inp = b.input;
+  // Danger: full turns. Otherwise gentle, rounded curves (botSteer eases into them).
+  b.urgent = danger || loc.z < 0.3;
   if (loc.z < 0) {
-    inp.steerX = loc.x > 0 ? -1 : 1;
-    inp.steerY = clamp(loc.y * 2, -1, 1);
+    b.target.x = loc.x > 0 ? -1 : 1;
+    b.target.y = clamp(loc.y * 2, -1, 1);
   } else {
-    inp.steerX = clamp(-loc.x * 2.4, -1, 1);
-    inp.steerY = clamp(loc.y * 2.4, -1, 1);
+    const gain = b.urgent ? 2.4 : 1.5;
+    b.target.x = clamp(-loc.x * gain, -1, 1);
+    b.target.y = clamp(loc.y * gain, -1, 1);
   }
   inp.roll = 0;
   inp.boost = fwdFree >= b.look - 1 && g.energy > 0.3 && (toAim ? aimDist < 60 : g.energy > 0.92);

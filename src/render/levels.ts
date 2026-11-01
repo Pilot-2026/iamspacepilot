@@ -73,16 +73,16 @@ interface Look {
 }
 
 const WONDERS: Record<LevelId, WonderKind[]> = {
-  'cloud-sea': ['balloons', 'skywhales'],
-  'storm-eye': ['debris', 'eye'],
-  'frost-heights': ['snowglobe', 'paperplanes'],
-  'jet-stream': ['zeppelins', 'paperplanes'],
-  aurora: ['jellyfish', 'planets'],
-  orbit: ['cubeplanet', 'astronaut', 'planets'],
-  'moon-shadow': ['discomoon', 'planets'],
-  'ring-world': ['donut', 'train'],
-  nebula: ['blackhole', 'spacewhales', 'planets'],
-  'lattice-core': ['tesseract', 'tetris'],
+  'cloud-sea': ['balloons', 'skywhales', 'worlds', 'city'],
+  'storm-eye': ['debris', 'eye', 'worlds', 'aliens'],
+  'frost-heights': ['snowglobe', 'paperplanes', 'worlds', 'city'],
+  'jet-stream': ['zeppelins', 'paperplanes', 'worlds', 'starships'],
+  aurora: ['jellyfish', 'worlds', 'aliens'],
+  orbit: ['cubeplanet', 'astronaut', 'worlds', 'starships', 'city'],
+  'moon-shadow': ['discomoon', 'worlds', 'aliens'],
+  'ring-world': ['donut', 'train', 'worlds', 'starships'],
+  nebula: ['blackhole', 'spacewhales', 'worlds', 'aliens'],
+  'lattice-core': ['tesseract', 'tetris', 'worlds', 'city', 'starships'],
 };
 
 const v = (a: V3t) => new THREE.Vector3(a[0], a[1], a[2]).normalize();

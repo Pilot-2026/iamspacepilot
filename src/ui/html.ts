@@ -21,11 +21,36 @@ export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 }
 
+/** The round logo: navy ring, white ring, red centre. */
+export const ROUNDEL =
+  '<svg class="roundel" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="50" fill="#000088"/><circle cx="50" cy="50" r="36.3" fill="#fff"/><circle cx="50" cy="50" r="17.6" fill="#a60000"/></svg>';
+
 export function wordmark(tag = 'h1'): string {
-  return `<${tag} class="wordmark" aria-label="iamSpacePilot"><span class="w1">iam</span><span class="w2">Space</span><span class="w3">Pilot</span></${tag}>`;
+  return `<${tag} class="wordmark" aria-label="iamSpacePilot"><span class="w1">iam</span><span class="w2">Space</span><span class="w3">Pilot</span>${ROUNDEL}</${tag}>`;
 }
 
-/** One menu screen: content column on the left, light trail art on the right. */
+const ext = (href: string, text: string) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+
+/**
+ * Under every menu: a red bar that stays at the bottom edge, and below it the
+ * legal links, the two websites with their logos and the portrait.
+ */
+/** The text of the red bar. */
+export const RED_BAR = `You want to fly in REAL: ${ext('https://www.pilotFilm.at', 'Contact me')} 🤗 Want to make AI work for you? Reach out for my workshops and keynotes 🚀`;
+
+export function siteFooter(): string {
+  return `<aside class="m-redbar">${RED_BAR}</aside>
+<footer class="m-site">
+  <nav class="m-legal" aria-label="Legal">${ext('https://www.pilotfilm.at/impressum', 'Impressum')}<span aria-hidden="true">·</span><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a></nav>
+  <div class="m-sites">
+    <a class="m-site-link" href="https://www.Andreas-Schmoelzer.at" target="_blank" rel="noopener"><span>www.Andreas-Schmoelzer.at</span><img src="/img/andreas-schmoelzer-logo.png" alt="Andreas Schmölzer, Keynote-Speaker" width="207" height="37" loading="lazy"></a>
+    <a class="m-site-link" href="https://www.pilotFilm.at" target="_blank" rel="noopener"><span>www.pilotFilm.at</span><img src="/img/pilotfilm-logo.png" alt="pilotFilm" width="178" height="42" loading="lazy"></a>
+  </div>
+  <img class="m-portrait" src="/img/andreas-schmoelzer.webp" alt="Andreas Schmölzer" width="160" height="162" loading="lazy">
+</footer>`;
+}
+
+/** One menu screen: content column on the left, light trail art on the right; the site footer below. */
 export function frame(inner: string, foot = ''): string {
-  return `<section class="m-screen"><div class="m-col">${inner}${foot ? `<div class="m-foot">${foot}</div>` : ''}</div>${ART}</section>`;
+  return `<section class="m-screen"><div class="m-col">${inner}${foot ? `<div class="m-foot">${foot}</div>` : ''}</div>${ART}</section>${siteFooter()}`;
 }

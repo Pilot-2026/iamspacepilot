@@ -137,7 +137,7 @@ export function consentScreen(): string {
       <li>Be fair: no insults, no hate, no personal details.</li>
       <li>The radio is not recorded.</li>
     </ul>
-    <p class="m-hint">Your browser asks for the microphone the first time you talk. Voice radio is for pilots aged 16 and over.</p>
+    <p class="m-hint">Your browser asks for the microphone the first time you talk. Voice radio is for pilots aged 16 and over; younger pilots only with a parent's permission. By continuing you agree to the <a href="/privacy.html" target="_blank" rel="noopener">rules, privacy and terms</a>.</p>
     <div class="m-list">
       <button class="mi primary" data-act="consent-ok" data-focus>Agree and continue</button>
       <button class="mi" data-act="back">Back ${ARROW}</button>
@@ -237,7 +237,7 @@ export function lobbyScreen(s: OnlineSession, prefs: OnlinePrefs, touch: boolean
   const title =
     (!m.running && resultTitle(s)) || (m.running ? (m.flying && m.local >= 0 ? `Round ${m.round}` : `Round ${m.round} is flying`) : m.round ? 'Lobby' : 'Ready for take-off');
   const outdated = [...s.outdated];
-  const summary = `${L.index} ${L.name} · ${MODE_LABEL[set.mode]} · ${set.bots ? `up to ${plural(set.bots, 'bot')} (${DIFF_LABEL[set.difficulty]})` : 'no bots'}`;
+  const summary = `Level ${L.index} · ${L.name} · ${MODE_LABEL[set.mode]} · ${set.bots ? `up to ${plural(set.bots, 'bot')} (${DIFF_LABEL[set.difficulty]})` : 'no bots'}`;
   const host = s.isHost;
   const startLabel = m.secondsToNext() >= 0 ? 'Start now' : 'Start the round';
   return frame(

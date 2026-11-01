@@ -6,7 +6,7 @@ import { SHOCKWAVE_RADIUS } from '../core/ships';
 import type { LevelId } from '../core/types';
 import { RING_RADIUS, World } from '../core/world';
 import { Cockpit, COCKPIT_FOV } from './cockpit';
-import { makeObstacleView, type ObstacleView } from './obstacles';
+import { fallColumn, makeObstacleView, type ObstacleView } from './obstacles';
 import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { createLevelEnv, type LevelEnv } from './levels';
 import { RibbonView } from './ribbon';
@@ -20,7 +20,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 /** Camera views, switched with the eye button (or V) in this order. */
 export type ViewMode = 'chase' | 'cockpit' | 'rear' | 'front' | 'top' | 'below' | 'far' | 'clean';
-export const VIEW_ORDER: readonly ViewMode[] = ['chase', 'cockpit', 'rear', 'front', 'top', 'below', 'far', 'clean'];
+export const VIEW_ORDER: readonly ViewMode[] = ['chase', 'far', 'cockpit', 'rear', 'front', 'top', 'below', 'clean'];
 export const VIEW_NAMES: Readonly<Record<ViewMode, string>> = {
   chase: 'Chase',
   cockpit: 'Cockpit',
@@ -90,6 +90,32 @@ interface Burst {
   vel: Float32Array;
   flash: THREE.Sprite;
   age: number;
+  /** Water drops fall; sparks do not. */
+  gravity?: number;
+  life?: number;
+}
+
+/** A soft dark spot with a thin light ring: readable on bright and on dark floors. */
+function shadowTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const x = c.getContext('2d');
+  if (x) {
+    const g = x.createRadialGradient(64, 64, 0, 64, 64, 60);
+    g.addColorStop(0, 'rgba(0,0,0,0.85)');
+    g.addColorStop(0.55, 'rgba(0,0,0,0.45)');
+    g.addColorStop(0.8, 'rgba(0,0,0,0.1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g;
+    x.fillRect(0, 0, 128, 128);
+    x.strokeStyle = 'rgba(255,255,255,0.75)';
+    x.lineWidth = 3;
+    x.beginPath();
+    x.arc(64, 64, 50, 0, Math.PI * 2);
+    x.stroke();
+  }
+  return new THREE.CanvasTexture(c);
 }
 
 /** Team games: warm colours for team 0, cool ones for team 1, taken from the level's palette. */
@@ -178,6 +204,16 @@ export class GameView {
   /** The cockpit was drawn last frame. */
   private cockpitOn = false;
   private touchLayout = false;
+  /** Shadows: one on the floor under every ship, and yours on the nearest shield wall and the ceiling. */
+  private readonly shadowGeo = new THREE.PlaneGeometry(1, 1);
+  private shadowTex: THREE.CanvasTexture | null = null;
+  private floorShadows: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[] = [];
+  private wallShadow: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null;
+  private ceilShadow: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null;
+  /** When each ship may splash again in a waterfall. */
+  private splashAt: number[] = [];
+  /** Your ship flew through a waterfall. */
+  onSplash: () => void = () => undefined;
   private readonly orbitQ = new THREE.Quaternion();
   private readonly orbitE = new THREE.Euler(0, 0, 0, 'YXZ');
   private readonly tv3 = new THREE.Vector3();
@@ -352,6 +388,23 @@ export class GameView {
       this.pilots.push(pv);
     });
 
+    this.shadowTex ??= shadowTexture();
+    const shadowMat = (color: number) =>
+      new THREE.MeshBasicMaterial({ map: this.shadowTex, color, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, fog: false });
+    this.floorShadows = this.pilots.map((pv) => {
+      const m = new THREE.Mesh(this.shadowGeo, shadowMat(pv.color));
+      m.rotation.x = -Math.PI / 2;
+      m.renderOrder = 2;
+      this.scene.add(m);
+      return m;
+    });
+    const mine = this.pilots[player]?.color ?? 0xffffff;
+    this.wallShadow = new THREE.Mesh(this.shadowGeo, shadowMat(mine));
+    this.ceilShadow = new THREE.Mesh(this.shadowGeo, shadowMat(mine));
+    this.ceilShadow.rotation.x = Math.PI / 2;
+    this.scene.add(this.wallShadow, this.ceilShadow);
+    this.splashAt = this.pilots.map(() => 0);
+
     for (let k = 0; k < world.rings.length; k++) {
       const g = new THREE.Group();
       g.add(new THREE.Mesh(new THREE.TorusGeometry(RING_RADIUS, 0.35, 10, 64), new THREE.MeshBasicMaterial({ color: env.ringColor })));
@@ -377,7 +430,7 @@ export class GameView {
 
   private addObstacles(world: World): void {
     this.obstacleViews = world.obstacles.map((o, i) => {
-      const v = makeObstacleView(o, i);
+      const v = makeObstacleView(o, i, world.spec.arena.floorY);
       v.update(o, 0);
       this.scene.add(v.obj);
       return v;
@@ -599,6 +652,8 @@ export class GameView {
     });
     this.updateWaves(dt);
     w.obstacles.forEach((o, k) => this.obstacleViews[k]?.update(o, this.time));
+    this.updateShadows(w);
+    this.updateSplashes(w);
 
     this.updateBolts(w);
     this.updateShots(w, alpha);
@@ -711,6 +766,97 @@ export class GameView {
       this.camera.fov = nf;
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  /** Ship shadows on the floor, the nearest shield wall and the ceiling: they show how far away the grid is. */
+  private updateShadows(w: World): void {
+    const a = w.spec.arena;
+    const R = w.radius();
+    w.gliders.forEach((g, i) => {
+      const m = this.floorShadows[i];
+      const pv = this.pilots[i];
+      if (!m || !pv) return;
+      const h = pv.p.y - a.floorY;
+      m.visible = g.alive && h < 260;
+      if (!m.visible) return;
+      m.position.set(pv.p.x, a.floorY + 0.25, pv.p.z);
+      m.scale.setScalar(7 + h * 0.06);
+      m.material.opacity = Math.max(0.12, Math.min(0.85, 1 - h / 200));
+    });
+    const g = w.gliders[this.player];
+    const pv = this.pilots[this.player];
+    const wall = this.wallShadow;
+    const ceil = this.ceilShadow;
+    if (!wall || !ceil || !g || !pv) return;
+    const p = pv.p;
+    let d: number;
+    if (a.kind === 'dome') {
+      const l = Math.max(1e-3, p.length());
+      d = R - l;
+      wall.position.copy(p).multiplyScalar((R - 0.4) / l);
+    } else {
+      const l = Math.max(1e-3, Math.hypot(p.x, p.z));
+      d = R - l;
+      wall.position.set((p.x * (R - 0.4)) / l, p.y, (p.z * (R - 0.4)) / l);
+    }
+    wall.visible = g.alive && d < 90 && wall.position.y > a.floorY;
+    if (wall.visible) {
+      wall.lookAt(0, a.kind === 'dome' ? 0 : wall.position.y, 0);
+      wall.scale.setScalar(7 + Math.max(0, d) * 0.06);
+      wall.material.opacity = Math.max(0, Math.min(0.85, 1 - d / 90));
+    }
+    const dc = a.ceilY - p.y;
+    ceil.visible = g.alive && a.kind === 'cylinder' && dc < 90;
+    if (ceil.visible) {
+      ceil.position.set(p.x, a.ceilY - 0.25, p.z);
+      ceil.scale.setScalar(7 + Math.max(0, dc) * 0.06);
+      ceil.material.opacity = Math.max(0, Math.min(0.85, 1 - dc / 90));
+    }
+  }
+
+  /** Ships flying through a waterfall make it splash. */
+  private updateSplashes(w: World): void {
+    const floor = w.spec.arena.floorY;
+    for (const o of w.obstacles) {
+      const col = fallColumn(o);
+      if (!col) continue;
+      w.gliders.forEach((g, i) => {
+        if (!g.alive || this.time < (this.splashAt[i] ?? 0)) return;
+        const pv = this.pilots[i];
+        const dx = pv.p.x - col.x;
+        const dz = pv.p.z - col.z;
+        if (dx * dx + dz * dz > (col.r + 1.6) * (col.r + 1.6) || pv.p.y > col.top || pv.p.y < floor) return;
+        this.splashAt[i] = this.time + 0.12;
+        this.spawnSplash(pv.p.x, pv.p.y, pv.p.z);
+        if (i === this.player) this.onSplash();
+      });
+    }
+  }
+
+  /** Water drops spraying away and falling. */
+  private spawnSplash(x: number, y: number, z: number): void {
+    const N = 70;
+    const pos = new Float32Array(N * 3);
+    const vel = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      pos[i * 3] = x;
+      pos[i * 3 + 1] = y;
+      pos[i * 3 + 2] = z;
+      const a = Math.random() * Math.PI * 2;
+      const s = 5 + Math.random() * 14;
+      vel[i * 3] = Math.cos(a) * s;
+      vel[i * 3 + 1] = 2 + Math.random() * 10;
+      vel[i * 3 + 2] = Math.sin(a) * s;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    const points = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xe9f8ff, size: 0.75, map: sharedTextures().soft, transparent: true, depthWrite: false }));
+    points.frustumCulled = false;
+    const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: sharedTextures().glow, color: 0xdff4ff, transparent: true, depthWrite: false, opacity: 0.7 }));
+    flash.position.set(x, y, z);
+    flash.scale.set(10, 10, 1);
+    this.scene.add(points, flash);
+    this.bursts.push({ points, vel, flash, age: 0, gravity: 22, life: 1.1 });
   }
 
   private updateDust(w: World): void {
@@ -837,14 +983,17 @@ export class GameView {
       const attr = burst.points.geometry.attributes.position as THREE.BufferAttribute;
       const pos = attr.array as Float32Array;
       const drag = Math.max(0, 1 - dt * 1.4);
+      const fall = (burst.gravity ?? 0) * dt;
       for (let i = 0; i < pos.length; i++) {
         pos[i] += burst.vel[i] * dt;
         burst.vel[i] *= drag;
+        if (fall && i % 3 === 1) burst.vel[i] -= fall;
       }
       attr.needsUpdate = true;
-      burst.points.material.opacity = Math.max(0, 1 - burst.age / 1.6);
+      const life = burst.life ?? 1.6;
+      burst.points.material.opacity = Math.max(0, 1 - burst.age / life);
       burst.flash.material.opacity = Math.max(0, 1 - burst.age / 0.35);
-      if (burst.age > 1.6) {
+      if (burst.age > life) {
         this.scene.remove(burst.points, burst.flash);
         burst.points.geometry.dispose();
         burst.points.material.dispose();
@@ -931,6 +1080,14 @@ export class GameView {
       v.dispose();
     }
     this.obstacleViews = [];
+    for (const m of [...this.floorShadows, this.wallShadow, this.ceilShadow]) {
+      if (!m) continue;
+      this.scene.remove(m);
+      m.material.dispose();
+    }
+    this.floorShadows = [];
+    this.wallShadow = null;
+    this.ceilShadow = null;
     for (const wv of this.waves) {
       this.scene.remove(wv.mesh);
       wv.mesh.geometry.dispose();

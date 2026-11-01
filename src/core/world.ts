@@ -1,5 +1,5 @@
 import { arenaRadius, boundaryHit } from './arena';
-import { botThink, makeBrain } from './bot';
+import { botSteer, botThink, makeBrain } from './bot';
 import {
   BOLT_RADIUS,
   COUNTDOWN_TICKS,
@@ -303,6 +303,7 @@ export class World {
         this.flyRemote(g);
         continue;
       }
+      if (g.brain) botSteer(g.brain);
       const inp = g.brain ? g.brain.input : (inputs[g.id] ?? NEUTRAL_INPUT);
       if (inp.special) this.useSpecial(g);
       this.updateMods(g);
@@ -956,7 +957,7 @@ export class World {
     const arena = this.spec.arena;
     const rng = new Rng(ringHash(this.seed, k, ring.count));
     const R = arena.minRadius * 0.85;
-    const top = Math.min(30, arena.ceilY - 15);
+    const top = Math.min(60, arena.ceilY - 15);
     // A few tries to keep the ring clear of obstacles.
     for (let tries = 0; tries < 8; tries++) {
       const a = rng.range(0, TWO_PI);

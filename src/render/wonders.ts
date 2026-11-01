@@ -5,7 +5,9 @@ import { sharedTextures } from './textures';
  * Wonders: the strange and wonderful things you see beyond the arena shield.
  * Pure decoration, far away, always moving: balloons, whales, a storm eye,
  * a snow globe, zeppelins, jellyfish of light, a cube planet, a disco moon,
- * a donut planet, a black hole, a tesseract and wandering planets.
+ * a donut planet, a black hole, a tesseract, wandering planets, a sky full
+ * of colourful worlds (water, fire, jungle, ice, earth, desert, crystal ...),
+ * flying saucers with aliens, starships and a floating city of the future.
  */
 
 export type WonderKind =
@@ -26,7 +28,11 @@ export type WonderKind =
   | 'blackhole'
   | 'tesseract'
   | 'tetris'
-  | 'planets';
+  | 'planets'
+  | 'worlds'
+  | 'aliens'
+  | 'starships'
+  | 'city';
 
 export interface Wonder {
   readonly group: THREE.Group;
@@ -52,8 +58,10 @@ function rnd(seed: number): () => number {
   };
 }
 
+type PlanetKind = 'gas' | 'lava' | 'ice' | 'candy' | 'toxic' | 'earth' | 'water' | 'jungle' | 'desert' | 'fire' | 'crystal';
+
 /** Planet surface painted on a canvas. */
-function planetTexture(kind: 'gas' | 'lava' | 'ice' | 'candy' | 'toxic' | 'earth', seed: number): THREE.CanvasTexture {
+function planetTexture(kind: PlanetKind, seed: number): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 256;
   c.height = 128;
@@ -93,6 +101,85 @@ function planetTexture(kind: 'gas' | 'lava' | 'ice' | 'candy' | 'toxic' | 'earth
       }
       x.stroke();
     }
+  } else if (kind === 'water') {
+    // An ocean world: deep blue, lighter currents, white storms.
+    x.fillStyle = '#0b4fb3';
+    x.fillRect(0, 0, 256, 128);
+    for (let i = 0; i < 60; i++) {
+      x.strokeStyle = `rgba(${90 + r() * 80},${190 + r() * 60},255,${0.25 + r() * 0.4})`;
+      x.lineWidth = 1 + r() * 3;
+      x.beginPath();
+      const y0 = r() * 128;
+      x.moveTo(0, y0);
+      for (let k = 1; k <= 8; k++) x.lineTo(k * 32, y0 + Math.sin(k + r() * 2) * 6);
+      x.stroke();
+    }
+    x.fillStyle = 'rgba(255,255,255,0.75)';
+    for (let i = 0; i < 9; i++) {
+      x.beginPath();
+      x.arc(r() * 256, 16 + r() * 96, 4 + r() * 8, 0, Math.PI * 2);
+      x.fill();
+    }
+  } else if (kind === 'jungle') {
+    // Dense green, darker forests, winding rivers.
+    x.fillStyle = '#2f9e3a';
+    x.fillRect(0, 0, 256, 128);
+    for (let i = 0; i < 260; i++) {
+      x.fillStyle = ['#1d6b28', '#46c24a', '#0f4a1c', '#7ad04d'][i % 4];
+      x.beginPath();
+      x.arc(r() * 256, r() * 128, 2 + r() * 7, 0, Math.PI * 2);
+      x.fill();
+    }
+    x.strokeStyle = '#2fa6d9';
+    x.lineWidth = 2;
+    for (let i = 0; i < 5; i++) {
+      x.beginPath();
+      let px = r() * 256;
+      let py = r() * 128;
+      x.moveTo(px, py);
+      for (let k = 0; k < 8; k++) {
+        px += (r() - 0.3) * 20;
+        py += (r() - 0.5) * 14;
+        x.lineTo(px, py);
+      }
+      x.stroke();
+    }
+  } else if (kind === 'desert') {
+    band(['#e9b96e', '#d99a4e', '#f2d29b', '#c77f3c'], 12);
+    x.strokeStyle = 'rgba(120,70,30,0.35)';
+    for (let i = 0; i < 40; i++) {
+      x.beginPath();
+      const px = r() * 256;
+      const py = r() * 128;
+      x.arc(px, py, 6 + r() * 14, Math.PI, Math.PI * 1.6);
+      x.stroke();
+    }
+  } else if (kind === 'fire') {
+    // A burning world: glowing yellow cracks in red and orange.
+    const gr = x.createLinearGradient(0, 0, 0, 128);
+    gr.addColorStop(0, '#ff3c00');
+    gr.addColorStop(0.5, '#ff9a00');
+    gr.addColorStop(1, '#ff3c00');
+    x.fillStyle = gr;
+    x.fillRect(0, 0, 256, 128);
+    for (let i = 0; i < 80; i++) {
+      x.fillStyle = `rgba(255,${200 + r() * 55},${r() * 120},${0.4 + r() * 0.5})`;
+      x.beginPath();
+      x.ellipse(r() * 256, r() * 128, 4 + r() * 16, 2 + r() * 6, r() * 3, 0, Math.PI * 2);
+      x.fill();
+    }
+  } else if (kind === 'crystal') {
+    for (let i = 0; i < 160; i++) {
+      x.fillStyle = ['#b48cff', '#7b2dff', '#ffffff', '#5ad1ff', '#d9b8ff'][i % 5];
+      const px = r() * 256;
+      const py = r() * 128;
+      x.beginPath();
+      x.moveTo(px, py - 8);
+      x.lineTo(px + 6, py);
+      x.lineTo(px, py + 8);
+      x.lineTo(px - 6, py);
+      x.fill();
+    }
   } else {
     x.fillStyle = '#1f4fa8';
     x.fillRect(0, 0, 256, 128);
@@ -102,6 +189,8 @@ function planetTexture(kind: 'gas' | 'lava' | 'ice' | 'candy' | 'toxic' | 'earth
       x.ellipse(r() * 256, 20 + r() * 88, 10 + r() * 30, 6 + r() * 16, r() * 3, 0, Math.PI * 2);
       x.fill();
     }
+    x.fillStyle = 'rgba(255,255,255,0.6)';
+    for (let i = 0; i < 12; i++) x.fillRect(r() * 256, r() * 128, 10 + r() * 30, 2 + r() * 3);
   }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = THREE.RepeatWrapping;
@@ -712,6 +801,345 @@ function planets(seed: number): Wonder {
   };
 }
 
+/** A soft cloud layer for living worlds. */
+function cloudTexture(seed: number): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const x = c.getContext('2d') as CanvasRenderingContext2D;
+  const r = rnd(seed + 99);
+  for (let i = 0; i < 70; i++) {
+    x.fillStyle = `rgba(255,255,255,${0.25 + r() * 0.4})`;
+    x.beginPath();
+    x.ellipse(r() * 256, 10 + r() * 108, 6 + r() * 22, 2 + r() * 5, 0, 0, Math.PI * 2);
+    x.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+
+const WORLD_KINDS: PlanetKind[] = ['water', 'fire', 'jungle', 'ice', 'earth', 'desert', 'crystal', 'candy', 'toxic', 'gas', 'lava'];
+const ATMOSPHERE: Record<PlanetKind, number> = {
+  water: 0x5ab8ff,
+  fire: 0xff6a00,
+  jungle: 0x7dffb0,
+  ice: 0xcff2ff,
+  earth: 0x6fb6ff,
+  desert: 0xffc98a,
+  crystal: 0xc49bff,
+  candy: 0xff9ad0,
+  toxic: 0xb6ff4f,
+  gas: 0xffd9a0,
+  lava: 0xff5a1a,
+};
+
+/** A sky full of colourful worlds: ocean, fire, jungle, ice, earth, desert, crystal, candy, acid and gas planets. */
+function worlds(seed: number): Wonder {
+  const g = new THREE.Group();
+  const r = rnd(seed * 31 + 7);
+  const start = Math.floor(r() * WORLD_KINDS.length);
+  const n = 10;
+  const list = Array.from({ length: n }, (_, i) => {
+    const kind = WORLD_KINDS[(start + i) % WORLD_KINDS.length];
+    const radius = 26 + r() * 80;
+    const holder = new THREE.Group();
+    const tex = planetTexture(kind, seed * 13 + i);
+    const glowing = kind === 'fire' || kind === 'lava';
+    const geo = kind === 'crystal' ? new THREE.IcosahedronGeometry(radius, 1) : new THREE.SphereGeometry(radius, 32, 20);
+    const mat = glowing
+      ? new THREE.MeshBasicMaterial({ map: tex, fog: false })
+      : new THREE.MeshStandardMaterial({ map: tex, roughness: kind === 'water' ? 0.35 : 0.85, metalness: kind === 'crystal' ? 0.4 : 0, flatShading: kind === 'crystal', fog: false, emissive: kind === 'crystal' ? 0x2a1050 : 0x000000 });
+    const body = new THREE.Mesh(geo, mat);
+    holder.add(body);
+    let clouds: THREE.Mesh | null = null;
+    if (kind === 'water' || kind === 'jungle' || kind === 'earth') {
+      clouds = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.03, 32, 20), new THREE.MeshStandardMaterial({ map: cloudTexture(seed + i), transparent: true, depthWrite: false, fog: false }));
+      holder.add(clouds);
+    }
+    // A soft glow of air (or flames) around it.
+    holder.add(glow(ATMOSPHERE[kind], radius * (glowing ? 4.2 : 2.9), glowing ? 0.75 : 0.35));
+    if (kind === 'gas' || kind === 'candy' || r() < 0.2) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(radius * 1.4, radius * 2.2, 72),
+        new THREE.MeshBasicMaterial({ color: ATMOSPHERE[kind], transparent: true, opacity: 0.45, side: THREE.DoubleSide, fog: false }),
+      );
+      ring.rotation.x = 1.15 + r() * 0.5;
+      holder.add(ring);
+    }
+    if (kind === 'water' || kind === 'earth' || r() < 0.3) {
+      // A small moon.
+      const moon = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.18, 14, 10), std(0xd8d2c8));
+      moon.position.set(radius * 1.9, radius * 0.3, 0);
+      holder.add(moon);
+    }
+    g.add(holder);
+    const az = (i / n) * Math.PI * 2 + r() * 0.5;
+    return { holder, body, clouds, az, rad: 700 + r() * 650, y: -60 + r() * 520, sp: (r() < 0.5 ? -1 : 1) * (0.002 + r() * 0.004), spin: 0.03 + r() * 0.08, glowing };
+  });
+  return {
+    group: g,
+    update(t) {
+      for (const k of list) {
+        const a = k.az + t * k.sp;
+        k.holder.position.set(Math.cos(a) * k.rad, k.y, Math.sin(a) * k.rad);
+        k.body.rotation.y = t * k.spin;
+        if (k.clouds) k.clouds.rotation.y = t * k.spin * 1.4;
+        if (k.glowing) k.body.scale.setScalar(1 + 0.015 * Math.sin(t * 3 + k.az * 5));
+      }
+    },
+  };
+}
+
+/** A little green alien: big head, black eyes, antennae. */
+function alien(): THREE.Group {
+  const a = new THREE.Group();
+  const skin = std(0x7dff6a, { flatShading: false, roughness: 0.5, emissive: 0x153d10 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12), skin);
+  head.scale.set(1, 1.2, 1);
+  head.position.y = 1.6;
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 8), skin);
+  body.scale.set(1, 1.3, 1);
+  a.add(head, body);
+  for (const s of [1, -1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 8), basic(0x05050a));
+    eye.scale.set(1, 1.5, 0.6);
+    eye.rotation.z = s * 0.5;
+    eye.position.set(s * 0.48, 1.7, 1.0);
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2, 5), skin);
+    ant.position.set(s * 0.5, 3.0, 0);
+    ant.rotation.z = -s * 0.3;
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), basic(0xffe14d));
+    tip.position.set(s * 0.68, 3.6, 0);
+    a.add(eye, ant, tip);
+  }
+  return a;
+}
+
+/** Flying saucers with aliens in glass domes, blinking lights and tractor beams. */
+function aliens(): Wonder {
+  const g = new THREE.Group();
+  const ufos = [0, 1, 2].map((i) => {
+    const u = new THREE.Group();
+    const hull = new THREE.Mesh(new THREE.SphereGeometry(10, 32, 12), std(0xc9d2dc, { flatShading: false, metalness: 0.8, roughness: 0.25 }));
+    hull.scale.set(1, 0.24, 1);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(10, 0.5, 8, 48), std(0x8a96a6, { metalness: 0.9, roughness: 0.2 }));
+    rim.rotation.x = Math.PI / 2;
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(4.6, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x9ff3ff, transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0.2, fog: false }),
+    );
+    dome.position.y = 1.6;
+    const pilot = alien();
+    pilot.scale.setScalar(1.1);
+    pilot.position.y = 1.2;
+    u.add(hull, rim, dome, pilot);
+    const lights: THREE.Mesh[] = [];
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      const l = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 6), basic([0xff4f4f, 0xffe14d, 0x5aff8a, 0x5ab8ff][k % 4]));
+      l.position.set(Math.cos(a) * 9.2, -0.6, Math.sin(a) * 9.2);
+      u.add(l);
+      lights.push(l);
+    }
+    // Tractor beam on every other saucer.
+    let beam: THREE.Mesh | null = null;
+    if (i !== 1) {
+      beam = new THREE.Mesh(
+        new THREE.ConeGeometry(9, 60, 24, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xbaff7a, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false }),
+      );
+      beam.position.y = -31;
+      u.add(beam);
+    }
+    u.add(glow(0x9ff3ff, 34, 0.25));
+    u.scale.setScalar(2.2);
+    g.add(u);
+    return { u, lights, beam, a: i * 2.1, rad: 420 + i * 110, y: 60 + i * 55, sp: 0.03 + i * 0.012 };
+  });
+  return {
+    group: g,
+    update(t) {
+      for (const k of ufos) {
+        const a = k.a + t * k.sp;
+        k.u.position.set(Math.cos(a) * k.rad, k.y + Math.sin(t * 0.9 + k.a) * 12, Math.sin(a) * k.rad);
+        k.u.rotation.set(Math.sin(t * 0.7 + k.a) * 0.15, t * 0.8, Math.cos(t * 0.6 + k.a) * 0.12);
+        k.lights.forEach((l, i) => (l.visible = Math.floor(t * 6 + i) % 3 !== 0));
+        if (k.beam) (k.beam.material as THREE.MeshBasicMaterial).opacity = 0.12 + 0.08 * Math.sin(t * 4 + k.a);
+      }
+    },
+  };
+}
+
+/** Starships: two long cruisers gliding by and a squadron of fighters in a V. */
+function starships(): Wonder {
+  const g = new THREE.Group();
+  const hullMat = std(0xb8c0cc, { metalness: 0.7, roughness: 0.35 });
+  const darkMat = std(0x2b3140, { metalness: 0.6, roughness: 0.4 });
+  const cruiser = (len: number, accent: number) => {
+    const c = new THREE.Group();
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(len * 0.2, len * 0.12, len), hullMat);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(len * 0.11, len * 0.35, 4), hullMat);
+    nose.rotation.x = Math.PI / 2;
+    nose.rotation.y = Math.PI / 4;
+    nose.position.z = len * 0.67;
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(len * 0.08, len * 0.1, len * 0.14), darkMat);
+    bridge.position.set(0, len * 0.11, -len * 0.25);
+    const wings = new THREE.Mesh(new THREE.BoxGeometry(len * 0.6, len * 0.02, len * 0.25), darkMat);
+    wings.position.z = -len * 0.2;
+    c.add(hull, nose, bridge, wings);
+    for (const s of [-1, 0, 1]) {
+      const e = glow(accent, len * 0.25, 0.9);
+      e.position.set(s * len * 0.07, 0, -len * 0.52);
+      c.add(e);
+    }
+    // Rows of windows.
+    for (let k = 0; k < 14; k++) {
+      for (const s of [1, -1]) {
+        const w = new THREE.Mesh(new THREE.BoxGeometry(0.3, len * 0.012, len * 0.025), basic(0xfff1b0));
+        w.position.set(s * len * 0.101, len * 0.02, -len * 0.42 + k * len * 0.06);
+        c.add(w);
+      }
+    }
+    return c;
+  };
+  const big = [cruiser(130, 0x5ab8ff), cruiser(90, 0xff7a3d)];
+  for (const c of big) g.add(c);
+  const fighters = Array.from({ length: 5 }, () => {
+    const f = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.ConeGeometry(2.4, 12, 3), std(0xeeeeee, { metalness: 0.5 }));
+    body.rotation.x = Math.PI / 2;
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(12, 0.4, 4), std(0xd10000, { metalness: 0.4 }));
+    wing.position.z = -2;
+    const engine = glow(0x7ad8ff, 9, 0.9);
+    engine.position.z = -6.5;
+    f.add(body, wing, engine);
+    g.add(f);
+    return f;
+  });
+  const tmp = new THREE.Vector3();
+  return {
+    group: g,
+    update(t) {
+      big.forEach((c, i) => {
+        const a = t * (0.012 + i * 0.006) + i * 2.5;
+        const R = 820 + i * 220;
+        c.position.set(Math.cos(a) * R, 170 + i * 120 + Math.sin(t * 0.2 + i) * 15, Math.sin(a) * R);
+        tmp.set(-Math.sin(a), 0, Math.cos(a)).add(c.position);
+        c.lookAt(tmp);
+      });
+      const a = t * 0.07;
+      const R = 520;
+      const lead = new THREE.Vector3(Math.cos(a) * R, 120 + Math.sin(t * 0.5) * 40, Math.sin(a) * R);
+      const fwd = new THREE.Vector3(-Math.sin(a), 0, Math.cos(a));
+      const side = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+      fighters.forEach((f, i) => {
+        const row = Math.ceil(i / 2);
+        const s = i === 0 ? 0 : i % 2 ? 1 : -1;
+        f.position.copy(lead).addScaledVector(fwd, -row * 22).addScaledVector(side, s * row * 18);
+        f.lookAt(tmp.copy(f.position).add(fwd));
+        f.rotateZ(Math.sin(t * 1.3 + i) * 0.3);
+      });
+    },
+  };
+}
+
+/** Lit windows for the towers of the floating city. */
+function windowTexture(seed: number): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 128;
+  const x = c.getContext('2d') as CanvasRenderingContext2D;
+  const r = rnd(seed);
+  x.fillStyle = '#141a33';
+  x.fillRect(0, 0, 64, 128);
+  for (let yy = 4; yy < 128; yy += 8) {
+    for (let xx = 4; xx < 64; xx += 8) {
+      if (r() < 0.55) {
+        x.fillStyle = ['#ffe9a8', '#9ff3ff', '#ffb0e0', '#ffffff'][Math.floor(r() * 4)];
+        x.fillRect(xx, yy, 4, 5);
+      }
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/** A floating city of the future: towers, glass domes, sky bridges and flying cars. */
+function city(seed: number): Wonder {
+  const g = new THREE.Group();
+  const r = rnd(seed * 17 + 3);
+  // The rock it floats on, with glowing engines underneath.
+  const base = new THREE.Mesh(new THREE.ConeGeometry(95, 80, 10, 1), std(0x5c5248));
+  base.rotation.x = Math.PI;
+  base.position.y = -40;
+  const deck = new THREE.Mesh(new THREE.CylinderGeometry(96, 96, 4, 40), std(0xcfd6e2, { metalness: 0.6, roughness: 0.3 }));
+  const edge = new THREE.Mesh(new THREE.TorusGeometry(96, 1.2, 6, 64), basic(0x5ae0ff));
+  edge.rotation.x = Math.PI / 2;
+  edge.position.y = 2;
+  g.add(base, deck, edge);
+  const under = glow(0x5ab8ff, 160, 0.45);
+  under.position.y = -70;
+  g.add(under);
+  const win = windowTexture(seed);
+  const towerMats = [0xffffff, 0xd8f0ff, 0xffe8f4].map(
+    (c) => new THREE.MeshStandardMaterial({ color: c, map: win, emissive: 0xffffff, emissiveMap: win, emissiveIntensity: 0.9, metalness: 0.4, roughness: 0.4, fog: false }),
+  );
+  const tops: THREE.Mesh[] = [];
+  for (let i = 0; i < 34; i++) {
+    const a = r() * Math.PI * 2;
+    const d = Math.sqrt(r()) * 78;
+    const h = 18 + r() * 90 * (1 - d / 110);
+    const w = 6 + r() * 9;
+    const round = r() < 0.4;
+    const geo = round ? new THREE.CylinderGeometry(w * 0.5, w * 0.6, h, 10) : new THREE.BoxGeometry(w, h, w);
+    const t = new THREE.Mesh(geo, towerMats[i % 3]);
+    t.position.set(Math.cos(a) * d, 2 + h / 2, Math.sin(a) * d);
+    g.add(t);
+    if (r() < 0.45) {
+      // A spire with a blinking light.
+      const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.9, 16, 6), std(0xe6e9f0, { metalness: 0.8 }));
+      sp.position.set(t.position.x, 2 + h + 8, t.position.z);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(1.2, 8, 6), basic(0xff3030));
+      lamp.position.set(t.position.x, 2 + h + 16.5, t.position.z);
+      g.add(sp, lamp);
+      tops.push(lamp);
+    }
+  }
+  for (let i = 0; i < 4; i++) {
+    const a = r() * Math.PI * 2;
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(12 + r() * 10, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x9ff3ff, transparent: true, opacity: 0.35, roughness: 0.05, emissive: 0x1a4060, fog: false }),
+    );
+    dome.position.set(Math.cos(a) * 50, 2, Math.sin(a) * 50);
+    g.add(dome);
+  }
+  // Flying cars: little lights circling the towers.
+  const cars = Array.from({ length: 16 }, (_, i) => {
+    const c = glow([0xffe14d, 0x5ae0ff, 0xff5cf0][i % 3], 6, 0.95);
+    g.add(c);
+    return { c, rad: 40 + r() * 70, y: 20 + r() * 70, sp: (r() < 0.5 ? -1 : 1) * (0.3 + r() * 0.5), a: r() * Math.PI * 2 };
+  });
+  const sx = r() < 0.5 ? -1 : 1;
+  g.position.set(sx * 520, 120, -620);
+  g.rotation.z = 0.06;
+  return {
+    group: g,
+    update(t) {
+      g.rotation.y = t * 0.02;
+      g.position.y = 120 + Math.sin(t * 0.25) * 10;
+      tops.forEach((l, i) => (l.visible = Math.floor(t * 2 + i * 0.37) % 2 === 0));
+      for (const k of cars) {
+        const a = k.a + t * k.sp;
+        k.c.position.set(Math.cos(a) * k.rad, k.y + Math.sin(t + k.a) * 4, Math.sin(a) * k.rad);
+      }
+    },
+  };
+}
+
 export function makeWonder(kind: WonderKind, seed = 1): Wonder {
   switch (kind) {
     case 'balloons':
@@ -750,5 +1178,13 @@ export function makeWonder(kind: WonderKind, seed = 1): Wonder {
       return tetris();
     case 'planets':
       return planets(seed);
+    case 'worlds':
+      return worlds(seed);
+    case 'aliens':
+      return aliens();
+    case 'starships':
+      return starships();
+    case 'city':
+      return city(seed);
   }
 }
