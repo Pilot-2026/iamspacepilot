@@ -22,10 +22,13 @@ export function soloWorldSetup(s: SoloSetup, callsign: string): WorldSetup {
   for (let i = 0; i < s.bots; i++) {
     pilots.push({ name: BOT_NAMES[i % BOT_NAMES.length], isBot: true, assist: true, skill: s.difficulty, ship: botShip(s.seed, i) });
   }
-  return { level: s.level, seed: s.seed, pilots };
+  return { level: s.level, seed: s.seed, pilots, pace: PACE[s.difficulty] };
 }
 
 export const DIFFICULTY_FACTOR: Record<Difficulty, number> = { rookie: 1, pilot: 1.5, ace: 2 };
+
+/** How fast everyone flies: Rookie much slower, Pilot as designed, Ace faster. */
+export const PACE: Record<Difficulty, number> = { rookie: 0.6, pilot: 1, ace: 1.25 };
 
 export const POINTS = {
   perSecond: 10,

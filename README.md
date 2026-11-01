@@ -9,7 +9,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 - Free flight (turn, pitch, roll). The light wall rolls with your glider: fly level and it stands upright, roll 90° and it lies flat, keep rolling and it twists into a spiral.
 - Ten levels, each with its own look, climbing from the sky into deep space: Cloud Sea, Storm Eye (lightning, updraft), Frost Heights, Jet Stream (wind), Aurora, Orbit, Moon Shadow, Ring World, Nebula (plasma bolts) and Lattice Core (a core that pulls you in). Win a level to open the next one.
 - Cheats for testing: press 1 five times, or tap the score five times, to jump to the next level. Type 2222, or tap the top right corner five times on a touch screen, to fly the next ship.
-- 1 to 7 bots in three difficulties (Rookie, Pilot, Ace). They fly smooth curves and only turn hard when a wall is close.
+- 1 to 7 bots in three difficulties (Rookie, Pilot, Ace). They fly smooth curves and only turn hard when a wall is close. The difficulty also sets the pace for everyone in the round: on Rookie all ships fly at 60% speed, on Pilot at normal speed, on Ace at 125% (online too, from the host's choice).
 - The arenas are big (twice the size they started with) and the arena shield closes in after 30 seconds.
 - Every ship casts a shadow on the floor, and yours also on the nearest shield wall and the ceiling, so you can feel how far away the grid is.
 - Boost: hold to speed up, refill it by flying close along walls or through rings.

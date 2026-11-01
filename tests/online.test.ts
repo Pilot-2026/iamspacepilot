@@ -161,7 +161,8 @@ describe('online match', () => {
 
   it('reports crashes to everyone, ends the round on the host and starts the next one', () => {
     const net = new FakeNet();
-    const a = net.join('Alpha', { bots: 1 });
+    // Normal speed: at Rookie pace the dive below would only loop.
+    const a = net.join('Alpha', { bots: 1, difficulty: 'pilot' });
     const b = net.join('Bravo');
     net.deliver();
     a.match.startRound();

@@ -49,6 +49,8 @@ export interface WorldSetup {
   online?: boolean;
   /** Team game: your team's walls do not hurt you, the last team flying wins. */
   teams?: boolean;
+  /** Speed of every glider (cruise and boost), from the difficulty: 1 = normal. */
+  pace?: number;
 }
 
 /** State of a remote glider as sent over the network. */
@@ -157,6 +159,8 @@ export class World {
   /** Winning team in team games, -1 otherwise. */
   winnerTeam = -1;
   readonly online: boolean;
+  /** Speed factor of every glider in this round. */
+  readonly pace: number;
   readonly teams: boolean;
   readonly seed: number;
   private readonly boltRng: Rng;
@@ -177,6 +181,7 @@ export class World {
     this.rng = new Rng(setup.seed);
     this.boltRng = new Rng((setup.seed ^ 0x5bd1e995) >>> 0);
     this.online = !!setup.online;
+    this.pace = setup.pace && setup.pace > 0 ? setup.pace : 1;
     this.teams = !!setup.teams;
     const n = setup.pilots.length;
     const rs = this.spec.arena.radius * 0.55;
@@ -208,7 +213,7 @@ export class World {
         qb: new Quat().copy(q),
         q: new Quat().copy(q),
         bank: 0,
-        speed: 24,
+        speed: FLIGHT.cruiseSpeed * this.pace,
         energy: 0.6,
         boosting: false,
         crashTick: -1,
@@ -647,8 +652,8 @@ export class World {
     const burner = ship.special.kind === 'afterburner' && this.tick < g.specialUntil;
     m.turn = ship.turn * (burner ? 1.2 : 1);
     m.roll = ship.roll;
-    m.cruise = ship.cruise;
-    m.boost = ship.boost * (burner ? 1.3 : 1);
+    m.cruise = ship.cruise * this.pace;
+    m.boost = ship.boost * this.pace * (burner ? 1.3 : 1);
     m.forceBoost = burner;
     m.drain = g.power === 'turbo' ? 0 : 1;
     m.slip = ship.slip;

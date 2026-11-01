@@ -216,3 +216,19 @@ describe('firestore REST client', () => {
     expect(calls.find((c) => c.url.includes('/documents/'))?.auth).toBe('Bearer tok');
   });
 });
+
+describe('pace', () => {
+  it('lets Rookie fly much slower and Ace faster, the same for every pilot', async () => {
+    const { World } = await import('../src/core/world');
+    const { soloWorldSetup, PACE } = await import('../src/core/solo');
+    const speeds = (['rookie', 'pilot', 'ace'] as const).map((difficulty) => {
+      const w = new World(soloWorldSetup({ level: 'cloud-sea', seed: 3, bots: 2, difficulty, assist: true, ship: 'trident' }, 'P'));
+      for (let t = 0; t < 180 + 120; t++) w.step([{ steerX: 0, steerY: 0, roll: 0, boost: false }]);
+      return w.gliders.map((g) => g.speed / g.ship.cruise);
+    });
+    expect(PACE.pilot).toBe(1);
+    for (const s of speeds[0]) expect(s).toBeCloseTo(24 * PACE.rookie, 0);
+    for (const s of speeds[1]) expect(s).toBeCloseTo(24, 0);
+    for (const s of speeds[2]) expect(s).toBeCloseTo(24 * PACE.ace, 0);
+  });
+});
