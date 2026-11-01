@@ -4,11 +4,11 @@ import type { TouchControls } from '../ui/touch';
 
 const DEAD = 0.15;
 
-/** Records a tap and reports true on the fifth tap within 2.5 seconds. */
-export function countTap(taps: number[], now = performance.now()): boolean {
+/** Records a tap and reports true on the fifth (or `need`-th) tap within 2.5 seconds. */
+export function countTap(taps: number[], now = performance.now(), need = 5): boolean {
   taps.push(now);
   while (taps.length && now - taps[0] > 2500) taps.shift();
-  if (taps.length >= 5) {
+  if (taps.length >= need) {
     taps.length = 0;
     return true;
   }
@@ -42,6 +42,9 @@ export class InputManager {
   private readonly out: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false, special: false };
 
   private readonly cheatTaps: number[] = [];
+  private readonly shipTaps: number[] = [];
+  /** Cheat 2222: the next ship. */
+  onShipCheat: () => void = () => undefined;
 
   constructor(
     private readonly touch: TouchControls,
@@ -66,6 +69,10 @@ export class InputManager {
       }
       if ((e.code === 'Digit1' || e.code === 'Numpad1') && !e.repeat) {
         if (countTap(this.cheatTaps)) this.onCheat();
+        return;
+      }
+      if ((e.code === 'Digit2' || e.code === 'Numpad2') && !e.repeat) {
+        if (countTap(this.shipTaps, performance.now(), 4)) this.onShipCheat();
         return;
       }
       if (e.code === 'MetaLeft' || e.code === 'MetaRight') this.metaHeld = true;

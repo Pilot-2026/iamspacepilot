@@ -1985,3 +1985,372 @@ body:not(.flying) .music-btn .music-lbl {
     display: none;
   }
 }
+
+/* ---------- Sound menu: music + sounds, music only, sounds only, all off ---------- */
+
+.sound-menu {
+  position: fixed;
+  z-index: 46;
+  right: calc(16px + var(--safe-r));
+  bottom: calc(68px + var(--safe-b));
+  display: grid;
+  min-width: 190px;
+  padding: 6px;
+  background: var(--yellow);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.sound-menu button {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font: 700 13px/1 var(--f-data);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sound-menu button::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+}
+
+.sound-menu button[aria-checked='true'] {
+  background: var(--ink);
+  color: var(--yellow);
+}
+
+.sound-menu button[aria-checked='true']::before {
+  border-color: var(--yellow);
+  background: var(--yellow);
+}
+
+body.flying .sound-menu {
+  top: calc(92px + var(--safe-t));
+  bottom: auto;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* ---------- Title colours: iam yellow with a black outline, Space only outlined, Pilot navy; the round logo at the end ---------- */
+
+:root {
+  --navy: #000088;
+  --red: #a60000;
+  --bar-h: 46px;
+}
+
+.wordmark .w1 {
+  font-weight: 600;
+  color: var(--yellow);
+  -webkit-text-stroke: 1.6px var(--ink);
+  paint-order: stroke fill;
+}
+
+.wordmark .w2 {
+  font-weight: 800;
+  color: transparent;
+  -webkit-text-stroke: 2px var(--ink);
+}
+
+.wordmark .w3 {
+  font-weight: 800;
+  color: var(--navy);
+  -webkit-text-stroke: 0;
+}
+
+.wordmark .roundel {
+  display: inline-block;
+  width: 0.78em;
+  height: 0.78em;
+  margin-left: 0.14em;
+  vertical-align: -0.04em;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.18));
+}
+
+/* ---------- Intro on a yellow sky ---------- */
+
+#menu-bg.intro {
+  background: radial-gradient(ellipse at 50% 42%, #fffbd6 0%, #fff27a 30%, #ffe600 62%, #f7c800 100%);
+}
+
+.intro {
+  color: var(--ink);
+}
+
+.intro-title {
+  color: var(--ink);
+  text-shadow: none;
+}
+
+.intro-title .w1 .il {
+  color: var(--yellow);
+  -webkit-text-stroke: 2px var(--ink);
+}
+
+.intro-title .w2 .il {
+  color: transparent;
+  -webkit-text-stroke: 2.5px var(--ink);
+}
+
+.intro-title .w3 {
+  -webkit-text-stroke: 0;
+}
+
+.intro-title .w3 .il {
+  color: var(--navy);
+}
+
+@keyframes lock {
+  0% {
+    text-shadow: 0 0 0 rgba(0, 0, 136, 0);
+  }
+  40% {
+    text-shadow: 0 0 26px rgba(255, 255, 255, 0.95);
+  }
+  100% {
+    text-shadow: 0 0 0 rgba(0, 0, 136, 0);
+  }
+}
+
+.intro-word {
+  -webkit-text-stroke: 1.5px rgba(10, 10, 10, 0.55);
+}
+
+.intro-start,
+.intro-skip {
+  color: var(--ink);
+}
+
+.intro-skip {
+  opacity: 0.6;
+}
+
+.intro-roundel {
+  display: inline-block;
+  transform: scale(0) rotate(-200deg);
+  transition: transform 0.7s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.intro-roundel .roundel {
+  display: block;
+  width: 0.82em;
+  height: 0.82em;
+  margin-left: 0.14em;
+}
+
+.intro.logo .intro-roundel {
+  transform: none;
+}
+
+/* ---------- The play button before the intro ---------- */
+
+.gate {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.gate-play {
+  width: clamp(120px, 22vmin, 180px);
+  height: clamp(120px, 22vmin, 180px);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 5px solid var(--ink);
+  border-radius: 50%;
+  background: var(--yellow);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow:
+    0 0 0 0 rgba(10, 10, 10, 0.35),
+    0 14px 40px rgba(120, 80, 0, 0.35);
+  animation: playpulse 1.8s ease-out infinite;
+  transition: transform 0.15s;
+}
+
+.gate-play:hover,
+.gate-play:focus-visible {
+  transform: scale(1.06);
+  outline: none;
+}
+
+.gate-play svg {
+  width: 58%;
+  height: 58%;
+  fill: var(--ink);
+}
+
+@keyframes playpulse {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(10, 10, 10, 0.35),
+      0 14px 40px rgba(120, 80, 0, 0.35);
+  }
+  100% {
+    box-shadow:
+      0 0 0 34px rgba(10, 10, 10, 0),
+      0 14px 40px rgba(120, 80, 0, 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gate-play {
+    animation: none;
+  }
+  .intro-roundel {
+    transition: none;
+  }
+}
+
+/* ---------- Start screen: 30% see-through ---------- */
+
+#menu-bg.see-through {
+  background: rgba(255, 230, 0, 0.7);
+}
+
+/* ---------- Red bar and site footer under every menu ---------- */
+
+.m-screen {
+  min-height: calc(100% - var(--bar-h));
+}
+
+.m-redbar {
+  position: relative;
+  min-height: var(--bar-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px calc(16px + var(--safe-r)) calc(8px + var(--safe-b)) calc(16px + var(--safe-l));
+  /* Just short of opaque: a fully opaque full-width bar makes some browsers skip drawing the 3D view behind the menu. */
+  background: rgba(217, 0, 0, 0.97);
+  color: #fff;
+  font: 600 14px/1.35 var(--f-body);
+  text-align: center;
+  text-wrap: balance;
+}
+
+.m-redbar a {
+  color: #fff;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.m-redbar a:hover,
+.m-redbar a:focus-visible {
+  color: var(--yellow);
+}
+
+.m-site {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px 32px;
+  /* Room at the bottom for the sound button. */
+  padding: 26px calc(28px + var(--safe-r)) calc(116px + var(--safe-b)) calc(28px + var(--safe-l));
+  background: rgba(255, 230, 0, 0.97);
+  border-top: 2px solid var(--ink);
+}
+
+.m-legal {
+  display: flex;
+  gap: 10px;
+  font: 700 13px/1 var(--f-data);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.m-legal a,
+.m-site-link {
+  color: var(--ink);
+}
+
+.m-sites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 36px;
+  align-items: center;
+}
+
+.m-site-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font: 700 15px/1.2 var(--f-body);
+  text-decoration: none;
+}
+
+.m-site-link span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.m-site-link img {
+  height: 34px;
+  width: auto;
+}
+
+.m-portrait {
+  width: 120px;
+  height: auto;
+  border-radius: 50%;
+}
+
+/* With the red bar at the bottom the sound button sits above it. */
+body.menu-bar:not(.flying) .music-btn {
+  bottom: calc(14px + var(--bar-h) + var(--safe-b));
+}
+
+body.menu-bar:not(.flying) .music-toast {
+  bottom: calc(72px + var(--bar-h) + var(--safe-b));
+}
+
+body.menu-bar:not(.flying) .sound-menu {
+  --bar-h-gap: var(--bar-h);
+  bottom: calc(68px + var(--bar-h) + var(--safe-b));
+}
+
+@media (max-width: 760px) {
+  :root {
+    --bar-h: 62px;
+  }
+  .m-redbar {
+    font-size: 12.5px;
+  }
+}
+
+@media (max-width: 420px) {
+  :root {
+    --bar-h: 78px;
+  }
+}
+
+/* The copy of the red bar that stays at the bottom edge while the real one is below the fold. */
+.m-redbar-fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 31;
+}
+
+/* The track name shows above the sound button, never on top of it. */
+.music-toast {
+  right: calc(16px + var(--safe-r));
+  bottom: calc(72px + var(--safe-b));
+}

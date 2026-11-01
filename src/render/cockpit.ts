@@ -71,6 +71,7 @@ export class Cockpit {
   private readonly glowMat = new THREE.MeshBasicMaterial({ color: 0x7af0ff, toneMapped: false });
   private readonly bezelMat = new THREE.MeshStandardMaterial({ color: 0x07070a, metalness: 0.3, roughness: 0.2 });
   private readonly glare: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly glare2: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private readonly lights: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>[] = [];
   private screens: Screens | null = null;
   private readonly screenMats: THREE.MeshBasicMaterial[] = [];
@@ -87,6 +88,9 @@ export class Cockpit {
       new THREE.MeshBasicMaterial({ map: glareTexture(), transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }),
     );
     this.glare.renderOrder = 5;
+    this.glare2 = new THREE.Mesh(this.glare.geometry, this.glare.material.clone());
+    this.glare2.material.opacity = 0.07;
+    this.glare2.renderOrder = 5;
   }
 
   /** The canvases the HUD draws the cockpit screens into. */
@@ -142,7 +146,7 @@ export class Cockpit {
     for (const o of this.built) {
       this.root.remove(o);
       o.traverse((n) => {
-        if (n instanceof THREE.Mesh && n !== this.glare) n.geometry.dispose();
+        if (n instanceof THREE.Mesh && n !== this.glare && n !== this.glare2) n.geometry.dispose();
       });
     }
     this.built = [];
@@ -219,12 +223,16 @@ export class Cockpit {
     const sideH = sideW * 0.5;
     const screen = (w: number, h: number, x: number, y: number, tilt: number, map: THREE.Texture | null) => {
       const g = new THREE.Group();
-      const bezel = new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(w + 0.05, h + 0.05, 0.03)), this.bezelMat);
-      const rim = new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(w + 0.075, h + 0.075, 0.04)), this.goldMat);
-      rim.position.z = -0.004;
-      g.add(rim, bezel);
+      // Up on the glass (touch screens) the data floats as a see-through projection, without a frame.
+      const onGlass = y > 0;
+      if (!onGlass) {
+        const bezel = new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(w + 0.05, h + 0.05, 0.03)), this.bezelMat);
+        const rim = new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(w + 0.075, h + 0.075, 0.04)), this.goldMat);
+        rim.position.z = -0.004;
+        g.add(rim, bezel);
+      }
       if (map) {
-        const mat = new THREE.MeshBasicMaterial({ map, transparent: true, toneMapped: false, depthWrite: false });
+        const mat = new THREE.MeshBasicMaterial({ map, transparent: true, opacity: onGlass ? 0.72 : 1, toneMapped: false, depthWrite: false });
         this.screenMats.push(mat);
         const pic = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
         pic.position.z = 0.004;
@@ -241,15 +249,6 @@ export class Cockpit {
     screen(radarSize, radarSize, 0, screenY, 0, s?.radar ?? null);
     screen(sideW, sideH, -sideX, sideY, turn, s?.left ?? null);
     screen(sideW, sideH, sideX, sideY, -turn, s?.right ?? null);
-    if (touch) {
-      // Brackets holding the screens on the pillars.
-      for (const sx of [-1, 1]) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.12), this.frameMat);
-        m.position.set(sx * (sideX + sideW / 2 + 0.01), sideY, -D - 0.02);
-        add(m);
-      }
-    }
-
     // Little status lights along the dashboard.
     const lightW = touch ? W * 0.5 : sideW;
     for (let i = 0; i < 10; i++) {
@@ -262,39 +261,13 @@ export class Cockpit {
       this.lights.push(l);
     }
 
-    // ---- Canopy frame: two pillars up the sides and a bow over the top.
-    const bar = (a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material) => {
-      const dir = b.clone().sub(a);
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r, dir.length(), 8), mat);
-      m.position.copy(a).addScaledVector(dir, 0.5);
-      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-      return add(m);
-    };
-    for (const sx of [-1, 1]) {
-      const a = new THREE.Vector3(sx * hw * 0.98, top - hh * 0.05, -D * 0.95);
-      const b = new THREE.Vector3(sx * hw * 0.58, hh * 1.25, -D * 1.35);
-      bar(a, b, 0.055, this.frameMat);
-      // Gold edge on the inner side of each pillar.
-      const ia = a.clone().add(new THREE.Vector3(-sx * 0.06, 0, 0.03));
-      const ib = b.clone().add(new THREE.Vector3(-sx * 0.04, 0, 0.03));
-      bar(ia, ib, 0.008, this.goldMat);
-    }
-    const bow = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-hw * 0.7, hh * 1.14, -D * 1.3),
-      new THREE.Vector3(-hw * 0.34, hh * 0.99, -D * 1.3),
-      new THREE.Vector3(0, hh * 0.95, -D * 1.3),
-      new THREE.Vector3(hw * 0.34, hh * 0.99, -D * 1.3),
-      new THREE.Vector3(hw * 0.7, hh * 1.14, -D * 1.3),
-    ]);
-    add(new THREE.Mesh(new THREE.TubeGeometry(bow, 40, 0.045, 8, false), this.frameMat));
-    const bowGlow = new THREE.Mesh(new THREE.TubeGeometry(bow, 40, 0.006, 4, false), this.glowMat);
-    bowGlow.position.set(0, -0.05, 0.03);
-    add(bowGlow);
-
-    // ---- Glass glare, top left.
+    // ---- No canopy frame: only a hint of glass, a soft glare top left and a fainter one on the right.
     this.glare.scale.set(hw * 1.1, hh * 1.1, 1);
     this.glare.position.set(-hw * 0.45, hh * 0.45, -D * 1.4);
     add(this.glare);
+    this.glare2.scale.set(-hw * 0.8, hh * 0.8, 1);
+    this.glare2.position.set(hw * 0.55, hh * 0.15, -D * 1.4);
+    add(this.glare2);
   }
 
   /** Blinking lights. */
@@ -319,7 +292,7 @@ export class Cockpit {
     this.disposeScreens();
     for (const o of this.built) {
       o.traverse((n) => {
-        if (n instanceof THREE.Mesh && n !== this.glare) n.geometry.dispose();
+        if (n instanceof THREE.Mesh && n !== this.glare && n !== this.glare2) n.geometry.dispose();
       });
     }
     for (const m of this.screenMats) m.dispose();
@@ -327,6 +300,7 @@ export class Cockpit {
     this.glare.geometry.dispose();
     this.glare.material.map?.dispose();
     this.glare.material.dispose();
+    this.glare2.material.dispose();
     for (const m of [this.frameMat, this.panelMat, this.goldMat, this.glowMat, this.bezelMat]) m.dispose();
   }
 }

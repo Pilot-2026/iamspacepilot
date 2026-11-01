@@ -8,7 +8,7 @@ import { LOCAL_TOP, saveProfile, validateCallsign, type Profile, type Quality } 
 import { SHIPS, isShip } from '../core/ships';
 import { hangarScreen } from './hangar';
 import { playIntro } from './intro';
-import { ARROW, esc, frame, ordinal, wordmark } from './html';
+import { ARROW, RED_BAR, esc, frame, ordinal, wordmark } from './html';
 import {
   clampBots,
   codeScreen,
@@ -70,6 +70,7 @@ export interface OnlineHandlers {
 }
 
 type Screen =
+  | 'gate'
   | 'intro'
   | 'callsign'
   | 'main'
@@ -125,6 +126,9 @@ export class Menu {
 
   /** Yellow background layer under the ship stage. */
   private readonly bg: HTMLElement | null = document.getElementById('menu-bg');
+  /** The red bar at the bottom edge; it gives way to the one above the footer when that one scrolls into view. */
+  private readonly fixedBar: HTMLElement;
+  private barWatch: IntersectionObserver | null = null;
 
   constructor(
     private readonly root: HTMLElement,
@@ -132,6 +136,11 @@ export class Menu {
     private readonly h: MenuHandlers,
   ) {
     this.boardLevel = profile.solo.level;
+    this.fixedBar = document.createElement('aside');
+    this.fixedBar.className = 'm-redbar m-redbar-fixed';
+    this.fixedBar.innerHTML = RED_BAR;
+    this.fixedBar.hidden = true;
+    root.after(this.fixedBar);
     root.addEventListener('click', (e) => this.onClick(e));
     root.addEventListener('input', (e) => this.onInput(e));
     root.addEventListener('keydown', (e) => this.onKey(e));
@@ -141,9 +150,28 @@ export class Menu {
     return !this.root.hidden;
   }
 
+  /** Shows the fixed red bar unless the one above the footer is on screen. */
+  private watchBar(): void {
+    this.barWatch?.disconnect();
+    this.barWatch = null;
+    const inflow = this.root.querySelector('.m-redbar');
+    document.body.classList.toggle('menu-bar', !!inflow);
+    this.fixedBar.hidden = !inflow;
+    if (!inflow || typeof IntersectionObserver !== 'function') return;
+    this.barWatch = new IntersectionObserver((entries) => {
+      const e = entries[entries.length - 1];
+      if (!this.root.hidden) this.fixedBar.hidden = e.isIntersecting && e.intersectionRatio > 0.9;
+    }, { root: this.root, threshold: [0, 0.9, 1] });
+    this.barWatch.observe(inflow);
+  }
+
   hide(): void {
     if (this.screen === 'hangar') this.h.ships([]);
     this.root.hidden = true;
+    this.barWatch?.disconnect();
+    this.barWatch = null;
+    this.fixedBar.hidden = true;
+    document.body.classList.remove('menu-bar');
     if (this.bg) this.bg.hidden = true;
     this.h.screen(null);
   }
@@ -152,9 +180,27 @@ export class Menu {
   showIntro(done: () => void): void {
     this.screen = 'intro';
     this.root.hidden = false;
+    this.fixedBar.hidden = true;
+    document.body.classList.remove('menu-bar');
     this.setBg('intro');
     this.h.screen('intro');
     playIntro(this.root, done);
+  }
+
+  /** Before everything: one big play button. Its tap is what lets the browser play music for the intro. */
+  showGate(done: () => void): void {
+    this.screen = 'gate';
+    this.root.hidden = false;
+    this.fixedBar.hidden = true;
+    document.body.classList.remove('menu-bar');
+    this.setBg('intro');
+    this.h.screen('gate');
+    this.root.innerHTML = `<section class="gate">
+      <button class="gate-play" type="button" aria-label="Play"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="M38 28 L76 50 L38 72 Z"/></svg></button>
+    </section>`;
+    const btn = this.root.querySelector('.gate-play') as HTMLButtonElement;
+    btn.focus({ preventScroll: true });
+    btn.addEventListener('click', () => done(), { once: true });
   }
 
   private setBg(cls: string): void {
@@ -177,6 +223,7 @@ export class Menu {
     this.h.screen(screen);
     this.root.innerHTML = this.render(screen);
     this.root.scrollTop = 0;
+    this.watchBar();
     const first =
       (this.root.querySelector('[data-focus]') as HTMLElement | null) ??
       (this.root.querySelector('.mi:not([aria-disabled="true"])') as HTMLElement | null);
@@ -561,6 +608,10 @@ export class Menu {
         p.settings.music = val === 'on';
         this.settingsChanged();
         break;
+      case 'sounds':
+        p.settings.sounds = val === 'on';
+        this.settingsChanged();
+        break;
       case 'assist':
         p.settings.autoHorizon = val === 'on';
         this.settingsChanged();
@@ -706,6 +757,7 @@ export class Menu {
 
   private render(s: Screen): string {
     switch (s) {
+      case 'gate':
       case 'intro':
         return '';
       case 'callsign':
@@ -796,7 +848,7 @@ export class Menu {
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span>v0.10 · Eight views</span><span>Fly free. Leave light behind.</span>`,
+      `<span>v0.11 · Glass worlds</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
@@ -815,8 +867,8 @@ export class Menu {
       .map((d) => `<button data-act="difficulty" data-val="${d}" aria-pressed="${p.difficulty === d}">${DIFFICULTY_LABEL[d]}</button>`)
       .join('');
     const record = rec
-      ? `Highscore on ${LEVELS[p.level].name}: ${top ? formatScore(top.score) : '–'} · ${rec.wins} ${rec.wins === 1 ? 'win' : 'wins'} in ${rec.flights} ${rec.flights === 1 ? 'flight' : 'flights'}`
-      : `No flights on ${LEVELS[p.level].name} yet. Harder difficulty scores more: Rookie ×1, Pilot ×1.5, Ace ×2.`;
+      ? `Highscore on level ${LEVELS[p.level].index}, ${LEVELS[p.level].name}: ${top ? formatScore(top.score) : '–'} · ${rec.wins} ${rec.wins === 1 ? 'win' : 'wins'} in ${rec.flights} ${rec.flights === 1 ? 'flight' : 'flights'}`
+      : `No flights on level ${LEVELS[p.level].index}, ${LEVELS[p.level].name} yet. Harder difficulty scores more: Rookie ×1, Pilot ×1.5, Ace ×2.`;
     return frame(
       `<p class="m-kicker">Solo flight</p>
       <h2 class="m-title">Last pilot flying wins</h2>
@@ -886,6 +938,7 @@ export class Menu {
         <div class="m-row"><label for="volume">Sound</label>
           <input id="volume" class="m-range" type="range" min="0" max="100" step="5" value="${Math.round(s.volume * 100)}"></div>
         <div class="m-row"><span class="lbl">Music</span>${seg('music', [['on', 'On'], ['off', 'Off']], s.music ? 'on' : 'off')}</div>
+        <div class="m-row"><span class="lbl">Sounds</span>${seg('sounds', [['on', 'On'], ['off', 'Off']], s.sounds ? 'on' : 'off')}</div>
         <div class="m-row"><label for="musicvol">Music volume</label>
           <input id="musicvol" class="m-range" type="range" min="0" max="100" step="5" value="${Math.round(s.musicVolume * 100)}"></div>
         <div class="m-row"><span class="lbl">Flight mode</span>${seg('invert', [['on', 'On: ↑ nose down'], ['off', 'Off: ↑ nose up']], s.invertPitch ? 'on' : 'off')}</div>
@@ -900,7 +953,7 @@ export class Menu {
   private pauseScreen(): string {
     this.back = null;
     return frame(
-      `<p class="m-kicker">${esc(LEVELS[this.profile.solo.level].name)}</p>
+      `<p class="m-kicker">Level ${LEVELS[this.profile.solo.level].index} · ${esc(LEVELS[this.profile.solo.level].name)}</p>
       <h2 class="m-title">Paused</h2>
       <div class="m-list">
         <button class="mi primary" data-act="resume">Resume</button>
@@ -931,7 +984,7 @@ export class Menu {
           ? `${ordinal(r.localRank)} best on this device.`
           : `Not in this device's top ${LOCAL_TOP}.`;
     return frame(
-      `<p class="m-kicker">${esc(r.level.name)} · ${sc.pilots} pilots · ${DIFFICULTY_LABEL[r.difficulty]}</p>
+      `<p class="m-kicker">Level ${r.level.index} · ${esc(r.level.name)} · ${sc.pilots} pilots · ${DIFFICULTY_LABEL[r.difficulty]}</p>
       <h2 class="m-title">${sc.won ? 'Last pilot flying' : 'Crashed'}</h2>
       <p class="m-text">${esc(r.cause)}</p>
       <dl class="stats">
@@ -960,7 +1013,7 @@ export class Menu {
     this.back = 'main';
     const level = this.boardLevel;
     const tabs = LEVEL_ORDER.map(
-      (id) => `<button data-act="board-level" data-val="${id}" aria-pressed="${id === level}">${LEVELS[id].name}</button>`,
+      (id) => `<button data-act="board-level" data-val="${id}" aria-pressed="${id === level}">${LEVELS[id].index} · ${LEVELS[id].name}</button>`,
     ).join('');
     const local = this.profile.highscores[level] ?? [];
     const localRows = local

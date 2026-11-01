@@ -26,6 +26,12 @@ export interface ObstacleDef {
   readonly spin?: number;
   /** How the renderer draws it. */
   readonly look: string;
+  /**
+   * A waterfall pours from the obstacle down to the floor: offset from the
+   * centre (x, z) and its radius. Only for the eye and the ears: flying
+   * through it is harmless and just splashes.
+   */
+  readonly fall?: { dx: number; dz: number; r: number };
 }
 
 export class Obstacle {
@@ -103,82 +109,78 @@ const ring = (n: number, radius: number, y: number, phase = 0): [number, number,
     return [dcos(a) * radius, y, dsin(a) * radius];
   });
 
-/** The obstacles of each level, by level id. */
+/**
+ * The obstacles of each level, by level id: only a few, mostly glass, some
+ * glass and rock, a few with waterfalls. The arenas are about 200 m across
+ * their radius, so they leave plenty of room.
+ */
 export const LEVEL_OBSTACLES: Readonly<Record<string, readonly ObstacleDef[]>> = {
-  // Floating sky islands and a whale circling above the clouds.
+  // Glass islands with rock bellies and waterfalls, and a glass whale circling high above.
   'cloud-sea': [
-    { shape: { kind: 'sphere', r: 8 }, at: [0, 30, 0], bob: [3, 9], look: 'island' },
-    { shape: { kind: 'sphere', r: 6.5 }, at: [26, -12, -22], bob: [2.5, 7], look: 'island' },
-    { shape: { kind: 'sphere', r: 6 }, at: [-24, -6, 24], bob: [2, 11], look: 'island' },
+    { shape: { kind: 'sphere', r: 13 }, at: [0, 46, 0], bob: [4, 10], look: 'island', fall: { dx: 8, dz: 4, r: 3.2 } },
+    { shape: { kind: 'sphere', r: 9 }, at: [-74, -6, 84], bob: [3, 8], look: 'island', fall: { dx: -5, dz: 5, r: 2.4 } },
     // The whale always faces the way it swims: its axis turns with its orbit.
-    { shape: { kind: 'capsule', r: 4, half: 9, axis: [0, 0, 1] }, at: [72, 42, 0], orbit: 0.09, spin: 0.09, look: 'whale' },
+    { shape: { kind: 'capsule', r: 5, half: 12, axis: [0, 0, 1] }, at: [140, 78, 0], orbit: 0.07, spin: 0.07, look: 'whale' },
   ],
-  // Thunder spires around the eye of the storm.
-  'storm-eye': ring(3, 34, 0, 0.5).map((at) => ({ shape: { kind: 'capsule' as const, r: 2.6, half: 24, axis: [0, 1, 0] as [number, number, number] }, at, look: 'spire' })),
-  // Leaning ice crystals.
+  // Two glass thunder spires beside the eye of the storm.
+  'storm-eye': ring(2, 82, 10, 0.5).map((at) => ({ shape: { kind: 'capsule' as const, r: 4, half: 44, axis: [0, 1, 0] as [number, number, number] }, at, look: 'spire' })),
+  // Leaning ice crystals and a rock with a frozen glass top that still drips.
   'frost-heights': [
-    { shape: { kind: 'capsule', r: 3, half: 13, axis: [0.35, 1, 0.15] }, at: [18, 6, 10], look: 'crystal' },
-    { shape: { kind: 'capsule', r: 2.6, half: 11, axis: [-0.3, 1, 0.4] }, at: [-16, -4, -14], look: 'crystal' },
-    { shape: { kind: 'capsule', r: 3.2, half: 15, axis: [0.2, 1, -0.45] }, at: [-6, 24, 22], look: 'crystal' },
-    { shape: { kind: 'capsule', r: 2.4, half: 10, axis: [-0.5, 1, -0.2] }, at: [84, 4, -30], look: 'crystal' },
+    { shape: { kind: 'capsule', r: 5, half: 22, axis: [0.35, 1, 0.15] }, at: [44, 14, 24], look: 'crystal' },
+    { shape: { kind: 'capsule', r: 4.5, half: 18, axis: [-0.3, 1, 0.4] }, at: [-40, -2, -34], look: 'crystal' },
+    { shape: { kind: 'sphere', r: 11 }, at: [-20, 48, 60], bob: [3, 12], look: 'geode', fall: { dx: 6, dz: -5, r: 2.6 } },
   ],
-  // A stack of turning turbine rings: fly through them, not into them.
-  'jet-stream': [
-    { shape: { kind: 'torus', R: 15, r: 1.7, axis: [1, 0, 0] }, at: [0, 2, 0], spin: 0.22, look: 'turbine' },
-    { shape: { kind: 'torus', R: 11, r: 1.5, axis: [0, 0, 1] }, at: [0, 33, 0], spin: -0.3, look: 'turbine' },
-  ],
-  // Two arches of light crossing over the middle.
+  // One big glass turbine ring: fly through it, not into it.
+  'jet-stream': [{ shape: { kind: 'torus', R: 28, r: 2.6, axis: [1, 0, 0] }, at: [0, 10, 0], spin: 0.18, look: 'turbine' }],
+  // A glass arch of light rising out of the floor, and a geode with a waterfall.
   aurora: [
-    { shape: { kind: 'torus', R: 31, r: 2, axis: [1, 0, 0] }, at: [0, -35, 0], look: 'arch' },
-    { shape: { kind: 'torus', R: 31, r: 2, axis: [0, 0, 1] }, at: [0, -35, 0], look: 'arch' },
+    { shape: { kind: 'torus', R: 62, r: 3.2, axis: [1, 0, 0] }, at: [0, -70, 0], look: 'arch' },
+    { shape: { kind: 'sphere', r: 10 }, at: [96, 34, -70], bob: [3, 11], look: 'geode', fall: { dx: -6, dz: 3, r: 2.6 } },
   ],
-  // A space station with a ring, and a satellite going round.
+  // A glass space station with a turning ring, and a satellite going round.
   orbit: [
-    { shape: { kind: 'capsule', r: 4, half: 9, axis: [0, 1, 0] }, at: [0, 22, 0], look: 'hub' },
-    { shape: { kind: 'torus', R: 19, r: 1.4, axis: [0, 1, 0] }, at: [0, 22, 0], spin: 0.1, look: 'station' },
-    { shape: { kind: 'sphere', r: 3.2 }, at: [31, -2, 0], orbit: 0.16, look: 'satellite' },
+    { shape: { kind: 'capsule', r: 6, half: 13, axis: [0, 1, 0] }, at: [0, 46, 0], look: 'hub' },
+    { shape: { kind: 'torus', R: 28, r: 2, axis: [0, 1, 0] }, at: [0, 46, 0], spin: 0.08, look: 'station' },
+    { shape: { kind: 'sphere', r: 4.5 }, at: [78, -4, 0], orbit: 0.12, look: 'satellite' },
   ],
-  // Drifting asteroids.
+  // Drifting rocks with glass crystals growing out of them.
   'moon-shadow': [
-    { shape: { kind: 'sphere', r: 6.5 }, at: [28, 4, 0], orbit: 0.06, bob: [3, 13], look: 'asteroid' },
-    { shape: { kind: 'sphere', r: 4.5 }, at: [-22, 20, 12], orbit: 0.09, bob: [2, 9], look: 'asteroid' },
-    { shape: { kind: 'sphere', r: 5.5 }, at: [-6, -12, -30], orbit: -0.07, bob: [2.5, 11], look: 'asteroid' },
-    { shape: { kind: 'sphere', r: 3.8 }, at: [10, 30, 24], orbit: 0.11, look: 'asteroid' },
-    { shape: { kind: 'sphere', r: 4 }, at: [0, -2, 0], bob: [5, 17], look: 'asteroid' },
+    { shape: { kind: 'sphere', r: 10 }, at: [66, 10, 0], orbit: 0.05, bob: [4, 13], look: 'asteroid' },
+    { shape: { kind: 'sphere', r: 7 }, at: [-52, 40, 30], orbit: 0.07, bob: [3, 9], look: 'asteroid' },
+    { shape: { kind: 'sphere', r: 8 }, at: [-10, -24, -78], orbit: -0.06, bob: [3, 11], look: 'asteroid' },
   ],
-  // Three gates on a circle: fly through the middle.
-  'ring-world': ring(3, 30, 12, 0.3).map((at) => ({
-    shape: { kind: 'torus' as const, R: 12, r: 1.6, axis: [-at[2] / 30, 0, at[0] / 30] as [number, number, number] },
+  // Three glass gates on a circle: fly through the middle.
+  'ring-world': ring(3, 74, 22, 0.3).map((at) => ({
+    shape: { kind: 'torus' as const, R: 18, r: 2.2, axis: [-at[2] / 74, 0, at[0] / 74] as [number, number, number] },
     at,
     look: 'gate',
   })),
-  // Plasma orbs circling at different heights and speeds.
+  // Glass bubbles with glowing rock hearts, circling at different heights.
   nebula: [
-    { shape: { kind: 'sphere', r: 5 }, at: [22, 0, 0], orbit: 0.2, bob: [3, 8], look: 'orb' },
-    { shape: { kind: 'sphere', r: 4.5 }, at: [-22, 16, 0], orbit: -0.16, bob: [3, 10], look: 'orb' },
-    { shape: { kind: 'sphere', r: 4 }, at: [0, 32, 22], orbit: 0.12, bob: [2, 6], look: 'orb' },
+    { shape: { kind: 'sphere', r: 8 }, at: [56, 0, 0], orbit: 0.14, bob: [4, 8], look: 'orb' },
+    { shape: { kind: 'sphere', r: 7 }, at: [-50, 40, 0], orbit: -0.11, bob: [4, 10], look: 'orb' },
   ],
-  // Lattice beams turning above and below the core.
+  // Glass beams turning above and below the core.
   'lattice-core': [
-    { shape: { kind: 'capsule', r: 1.7, half: 21, axis: [1, 0, 0] }, at: [0, 16, 0], spin: 0.14, look: 'beam' },
-    { shape: { kind: 'capsule', r: 1.7, half: 21, axis: [0, 0, 1] }, at: [0, -16, 0], spin: -0.11, look: 'beam' },
-    { shape: { kind: 'capsule', r: 1.5, half: 17, axis: [1, 0, 1] }, at: [0, 32, 0], spin: 0.09, look: 'beam' },
+    { shape: { kind: 'capsule', r: 2.6, half: 40, axis: [1, 0, 0] }, at: [0, 40, 0], spin: 0.12, look: 'beam' },
+    { shape: { kind: 'capsule', r: 2.6, half: 40, axis: [0, 0, 1] }, at: [0, -40, 0], spin: -0.09, look: 'beam' },
   ],
 };
 
 /** What to call them in crash messages. */
 export const OBSTACLE_NAMES: Readonly<Record<string, string>> = {
-  island: 'a sky island',
-  whale: 'the sky whale',
-  spire: 'a thunder spire',
+  island: 'a glass island',
+  whale: 'the glass whale',
+  spire: 'a glass spire',
   crystal: 'an ice crystal',
-  turbine: 'a turbine ring',
-  arch: 'an arch of light',
+  geode: 'a glass rock',
+  turbine: 'the glass turbine',
+  arch: 'the arch of light',
   hub: 'the space station',
   station: 'the station ring',
   satellite: 'a satellite',
   asteroid: 'an asteroid',
-  gate: 'a ring gate',
-  orb: 'a plasma orb',
-  beam: 'a lattice beam',
+  gate: 'a glass gate',
+  orb: 'a glass orb',
+  beam: 'a glass beam',
 };

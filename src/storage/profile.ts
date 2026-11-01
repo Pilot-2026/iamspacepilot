@@ -16,6 +16,8 @@ export interface Settings {
   /** Background music on or off, and its volume. */
   music: boolean;
   musicVolume: number;
+  /** Sound effects (engine, shots, crashes...) on or off. */
+  sounds: boolean;
   autoHorizon: boolean;
   quality: Quality;
 }
@@ -84,7 +86,7 @@ export function defaultProfile(): Profile {
     v: 1,
     callsign: '',
     pilotKey: newPilotKey(),
-    settings: { volume: 0.8, invertPitch: true, controls: 2, music: true, musicVolume: 0.6, autoHorizon: isTouch, quality: 'auto' },
+    settings: { volume: 0.8, invertPitch: true, controls: 2, music: true, musicVolume: 0.6, sounds: true, autoHorizon: isTouch, quality: 'auto' },
     solo: { level: 'cloud-sea', bots: 3, difficulty: 'pilot' },
     unlocked: 1,
     records: {},

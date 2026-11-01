@@ -14,6 +14,7 @@ import { ReplayRecorder, quantize } from './core/replay';
 import { LEVELS, LEVEL_ORDER, nextLevel } from './core/levels';
 import { OBSTACLE_NAMES } from './core/obstacles';
 import { POWERS } from './core/powerups';
+import { SHIPS, SHIP_ORDER } from './core/ships';
 import { liveScore, playerFinished, soloScore, soloWorldSetup, type SoloScore, type SoloSetup } from './core/solo';
 import { NEUTRAL_INPUT, type CrashInfo, type SimEvent } from './core/types';
 import { World } from './core/world';
@@ -32,6 +33,14 @@ import { TEAM_NAMES } from './ui/online-screens';
 import { TouchControls } from './ui/touch';
 
 const PLAYER = 0;
+
+type SoundMode = 'all' | 'music' | 'sounds' | 'off';
+const SOUND_MODES: [SoundMode, string][] = [
+  ['all', 'Music + sounds'],
+  ['music', 'Music only'],
+  ['sounds', 'Sounds only'],
+  ['off', 'All off'],
+];
 const isTouchDevice = () =>
   (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window;
 
@@ -46,6 +55,7 @@ class App {
   private readonly input: InputManager;
   private view: GameView | null = null;
   private musicButton: HTMLButtonElement;
+  private soundMenu: HTMLElement | null = null;
   private trackToast: HTMLElement | null = null;
   private toastTimer = 0;
   private previews: ShipPreviews | null = null;
@@ -88,6 +98,8 @@ class App {
     this.hud.hide();
     this.input = new InputManager(this.touch, () => this.togglePause(), () => this.cheat(), () => this.toggleMusic());
     this.input.onView = () => this.cycleView();
+    this.input.onShipCheat = () => this.shipCheat();
+    this.touch.onShipCheat = () => this.shipCheat();
     this.input.onLook = (z, yaw, pitch) => this.look(z, yaw, pitch);
     this.touch.onLook = (z, yaw, pitch) => this.look(z, yaw, pitch);
     this.touch.onLookReset = () => this.view?.resetLook();
@@ -134,6 +146,7 @@ class App {
     try {
       this.view = new GameView($('scene') as HTMLCanvasElement);
       this.view.setCockpitScreens(this.hud.cockpitLeft, this.hud.cockpitRight, this.hud.radarCanvas);
+      this.view.onSplash = () => this.sound.splash();
     } catch {
       this.view = null;
     }
@@ -171,9 +184,13 @@ class App {
         this.stage = null;
       }
       this.showLevel = Math.floor(Math.random() * LEVEL_ORDER.length);
-      this.menu.showIntro(() => {
-        this.menu.show(this.profile.callsign ? 'main' : 'callsign');
-        if (/^[A-Z0-9]{5}$/.test(code)) this.menu.joinFromLink(code);
+      // First a play button: its tap allows the music, which then plays from the very first frame of the intro.
+      this.menu.showGate(() => {
+        this.sound.unlock();
+        this.menu.showIntro(() => {
+          this.menu.show(this.profile.callsign ? 'main' : 'callsign');
+          if (/^[A-Z0-9]{5}$/.test(code)) this.menu.joinFromLink(code);
+        });
       });
     }
     requestAnimationFrame((t) => this.frame(t));
@@ -184,6 +201,7 @@ class App {
     this.sound.setVolume(s.volume);
     this.sound.setMusicEnabled(s.music);
     this.sound.setMusicVolume(s.musicVolume);
+    this.sound.setSoundsEnabled(s.sounds);
     this.updateMusicButton();
     this.input.invertPitch = s.invertPitch;
     if (this.view) {
@@ -300,7 +318,7 @@ class App {
 
   /** Menu screen changed: ship stage behind it, and the worlds behind the start screen. */
   private menuScreen(screen: MenuScreen | null): void {
-    this.stage?.setMode(screen === 'intro' ? 'intro' : screen ? 'menu' : 'off');
+    this.stage?.setMode(screen === 'intro' ? 'intro' : screen === 'gate' || !screen ? 'off' : 'menu');
     const view = this.view;
     if (!view) return;
     if (screen === 'main' && this.state === 'menu') {
@@ -335,21 +353,58 @@ class App {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'music-btn';
+    b.setAttribute('aria-haspopup', 'true');
     b.innerHTML =
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.6" fill="currentColor"/><circle cx="17.5" cy="16" r="2.6" fill="currentColor"/><path class="off" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span class="music-lbl">Music on</span>';
+    // A small menu: music and sounds, music only, sounds only, all off.
+    const menu = document.createElement('div');
+    menu.className = 'sound-menu';
+    menu.hidden = true;
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = SOUND_MODES.map(([mode, label]) => `<button type="button" role="menuitemradio" data-mode="${mode}">${label}</button>`).join('');
+    const close = () => {
+      menu.hidden = true;
+      b.setAttribute('aria-expanded', 'false');
+    };
     b.addEventListener('click', (e) => {
       e.stopPropagation();
       this.sound.unlock();
-      this.toggleMusic();
+      menu.hidden = !menu.hidden;
+      b.setAttribute('aria-expanded', String(!menu.hidden));
       b.blur();
     });
-    document.getElementById('app')?.append(b);
+    menu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const btn = (e.target as HTMLElement).closest('[data-mode]') as HTMLElement | null;
+      if (!btn) return;
+      this.setSoundMode(btn.dataset.mode as SoundMode);
+      close();
+    });
+    menu.addEventListener('pointerdown', (e) => e.stopPropagation());
+    b.addEventListener('pointerdown', (e) => e.stopPropagation());
+    window.addEventListener('pointerdown', () => close());
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape') close();
+    });
+    const app = document.getElementById('app');
+    app?.append(b, menu);
+    this.soundMenu = menu;
     const toast = document.createElement('div');
     toast.className = 'music-toast';
     toast.hidden = true;
-    document.getElementById('app')?.append(toast);
+    app?.append(toast);
     this.trackToast = toast;
     return b;
+  }
+
+  /** Music and sounds, music only, sounds only or all off. */
+  private setSoundMode(mode: SoundMode): void {
+    const s = this.profile.settings;
+    s.music = mode === 'all' || mode === 'music';
+    s.sounds = mode === 'all' || mode === 'sounds';
+    saveProfile(this.profile);
+    this.applySettings();
+    this.menu.refreshSettings();
   }
 
   /** M key or the music button: music on or off. */
@@ -365,12 +420,15 @@ class App {
   private updateMusicButton(): void {
     const b = this.musicButton;
     if (!b) return;
-    const on = this.profile.settings.music;
-    b.setAttribute('aria-pressed', String(on));
-    b.setAttribute('aria-label', on ? 'Music on (M)' : 'Music off (M)');
-    b.title = on ? 'Music on (M)' : 'Music off (M)';
+    const s = this.profile.settings;
+    const mode: SoundMode = s.music && s.sounds ? 'all' : s.music ? 'music' : s.sounds ? 'sounds' : 'off';
+    const label = SOUND_MODES.find(([m]) => m === mode)?.[1] ?? '';
+    b.setAttribute('aria-pressed', String(s.music));
+    b.setAttribute('aria-label', `Sound: ${label}`);
+    b.title = `Sound: ${label} (M switches the music)`;
     const lbl = b.querySelector('.music-lbl');
-    if (lbl) lbl.textContent = on ? 'Music on' : 'Music off';
+    if (lbl) lbl.textContent = label;
+    this.soundMenu?.querySelectorAll<HTMLElement>('[data-mode]').forEach((el) => el.setAttribute('aria-checked', String(el.dataset.mode === mode)));
   }
 
   /** Shows the name of a new music track for a moment. */
@@ -686,6 +744,19 @@ class App {
     this.sound.stopEngine();
     this.launch();
     this.hud.message(`Level ${LEVELS[next].index}`, LEVELS[next].name, 1.6);
+  }
+
+  /** Cheat: 2222 (or five taps in the top right corner) restarts the round with the next ship. */
+  private shipCheat(): void {
+    if (this.session) return;
+    if (this.state !== 'playing' && this.state !== 'paused' && this.state !== 'ending') return;
+    const next = SHIP_ORDER[(SHIP_ORDER.indexOf(this.profile.ship) + 1) % SHIP_ORDER.length];
+    this.profile.ship = next;
+    saveProfile(this.profile);
+    this.endAt = 0;
+    this.sound.stopEngine();
+    this.launch();
+    this.hud.message(SHIPS[next].name, SHIPS[next].special.name, 1.6);
   }
 
   private finish(): void {

@@ -185,7 +185,7 @@ export class Hud {
     this.hullEl.innerHTML = '<i></i>'.repeat(g.ship.hull);
     this.hullPips = Array.from(this.hullEl.querySelectorAll('i'));
     this.specName.textContent = g.ship.special.name;
-    this.level.textContent = `L${world.spec.index} · ${world.spec.name} · ${world.spec.altitude}`;
+    this.level.textContent = `Level ${world.spec.index} · ${world.spec.name} · ${world.spec.altitude}`;
     this.levelText = `L${world.spec.index} · ${world.spec.name}`;
     this.feedEl.innerHTML = '';
     this.center.classList.remove('show');
