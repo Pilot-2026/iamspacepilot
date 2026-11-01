@@ -5,6 +5,7 @@ import { BIG_WALL, POWERS, type PowerId } from '../core/powerups';
 import { SHOCKWAVE_RADIUS } from '../core/ships';
 import type { LevelId } from '../core/types';
 import { RING_RADIUS, World } from '../core/world';
+import { makeObstacleView, type ObstacleView } from './obstacles';
 import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { createLevelEnv, type LevelEnv } from './levels';
 import { RibbonView } from './ribbon';
@@ -115,6 +116,7 @@ export class GameView {
   private ringViews: THREE.Group[] = [];
   private readonly boltViews = new Map<number, BoltView>();
   private waves: { mesh: THREE.Mesh<THREE.IcosahedronGeometry, THREE.MeshBasicMaterial>; age: number }[] = [];
+  private obstacleViews: ObstacleView[] = [];
   private readonly shotViews = new Map<number, ShotView>();
   private readonly shotGeo: THREE.CylinderGeometry;
   private readonly reticle: THREE.Sprite;
@@ -214,6 +216,7 @@ export class GameView {
     this.useEnv(env);
     const world = new World({ level, seed: 5, pilots: [{ name: '', isBot: true, assist: true, skill: 'rookie', remote: true }] });
     this.show = { world, angle: Math.random() * Math.PI * 2 };
+    this.addObstacles(world);
     // Only 5% of it shows through the menu: a lower resolution is plenty.
     this.renderer.setPixelRatio(0.6);
   }
@@ -229,6 +232,10 @@ export class GameView {
     this.time += dt;
     s.angle += dt * 0.06;
     s.world.tick = Math.floor(this.time * 60);
+    s.world.obstacles.forEach((o, k) => {
+      o.update(s.world.tick);
+      this.obstacleViews[k]?.update(o, this.time);
+    });
     const R = s.world.spec.arena.radius * 0.55;
     const a = s.angle;
     this.camera.position.set(Math.cos(a) * R, 10 + Math.sin(this.time * 0.13) * 6, Math.sin(a) * R);
@@ -250,6 +257,7 @@ export class GameView {
     this.player = player;
     this.useEnv(createLevelEnv(world.spec.id));
     const env = this.env as LevelEnv;
+    this.addObstacles(world);
 
     const members = [0, 0];
     world.gliders.forEach((g, i) => {
@@ -312,6 +320,15 @@ export class GameView {
     this.snapCamera = true;
     this.fov = 66;
     this.time = 0;
+  }
+
+  private addObstacles(world: World): void {
+    this.obstacleViews = world.obstacles.map((o, i) => {
+      const v = makeObstacleView(o, i);
+      v.update(o, 0);
+      this.scene.add(v.obj);
+      return v;
+    });
   }
 
   /** Remembers the current state so frames between ticks can be interpolated. */
@@ -470,6 +487,7 @@ export class GameView {
       v.rotateZ(this.time * 0.6);
     });
     this.updateWaves(dt);
+    w.obstacles.forEach((o, k) => this.obstacleViews[k]?.update(o, this.time));
 
     this.updateBolts(w);
     this.updateShots(w, alpha);
@@ -758,6 +776,11 @@ export class GameView {
       pv.shield.material.dispose();
       pv.aura.material.dispose();
     }
+    for (const v of this.obstacleViews) {
+      this.scene.remove(v.obj);
+      v.dispose();
+    }
+    this.obstacleViews = [];
     for (const wv of this.waves) {
       this.scene.remove(wv.mesh);
       wv.mesh.geometry.dispose();

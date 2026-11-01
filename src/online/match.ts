@@ -92,7 +92,7 @@ export interface MatchCallbacks {
   onVersionMismatch(name: string): void;
 }
 
-const CRASH_KINDS: readonly CrashKind[] = ['wall', 'shield', 'floor', 'ceiling', 'collision', 'lightning', 'core', 'shot', 'left'];
+const CRASH_KINDS: readonly CrashKind[] = ['wall', 'shield', 'floor', 'ceiling', 'collision', 'lightning', 'core', 'obstacle', 'shot', 'left'];
 const finiteList = (a: unknown): a is number[] => Array.isArray(a) && a.every((v) => typeof v === 'number' && Number.isFinite(v));
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;

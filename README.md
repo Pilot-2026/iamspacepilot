@@ -16,10 +16,12 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 - Four ships to choose from in the hangar, each with its own handling and a special ability (key C):
   - **Trident** (gunship): Trident Burst fires a fan of five shots; its shots fly 20% faster.
   - **Manta** (interceptor): Afterburner, two seconds at top speed; sharpest turns, faster slipstream.
-  - **Halo** (phase runner): Phase Shift, 1.5 seconds flying through walls and shots; rolls 40% faster.
+  - **Halo** (phase runner): Phase Shift, 1.5 seconds flying through walls, obstacles and shots; rolls 40% faster.
   - **Bulwark** (heavy): Shockwave wipes out enemy shots nearby and jams their guns; takes five hits.
 - Bonus rings: fly through one for boost and the bonus it shows by colour: triple shot, big wall, shield, cool gun, turbo, seeker shots or repair. Rings work online too.
 - Light walls are twice as high as before. They leave the ship narrow and spread out behind it.
+- Obstacles inside the arena, different in every level: floating sky islands with waterfalls and a sky whale (Cloud Sea), thunder spires (Storm Eye), leaning ice crystals (Frost Heights), turning turbine rings (Jet Stream), arches of light (Aurora), a space station with a turning ring and a satellite (Orbit), drifting asteroids (Moon Shadow), ring gates (Ring World), plasma orbs (Nebula) and turning lattice beams (Lattice Core). Many of them move. Flying into one is deadly, shots fizzle on them, the radar shows their shape and a warning appears when you get close. They move the same way on every device, so they work online too.
+- Crazy outer worlds: every level has its own wonders far outside the arena: hot-air balloons and sky whales, a tornado full of cows, houses and trees around a giant eye that follows you, a snow globe, zeppelins, paper planes, jellyfish, a cube planet, a tumbling astronaut, a disco moon, a planet-sized donut, a train circling on a rail, a black hole, a tesseract, falling blocks, and painted planets with rings.
 - Music: twelve electronic tracks made live in the browser (one per level, plus menu and intro), with intro, build-up, drop and break; the mix opens up in flight and gets muffled after a crash or in the pause menu. Press M or the music button to switch it on or off at any time; volume in Settings.
 - Intro: the four ships fly at you, roll, fire and leave walls of light while the title builds itself from flying letters and words (any key or tap skips it). Behind every menu small ships cross the screen with fading trails, always beneath the text; the start screen is 5% see-through and the level worlds shine through.
 - Steering sounds: turning left and right hiss from that side in different pitches, climbing rises, diving rushes low, rolling whirrs, and every move starts with a short thruster puff.
@@ -85,10 +87,10 @@ Netlify builds the site from `main` on every push (`netlify.toml`). Every pull r
 ## How the code is organised
 
 ```
-src/core/     Simulation only, no graphics: flight model, walls, collisions, bots, arena.
+src/core/     Simulation only, no graphics: flight model, walls, collisions, obstacles, bots, arena.
               Runs at a fixed 60 ticks per second and uses its own deterministic math,
               so every browser and a server compute exactly the same flight.
-src/render/   three.js: sky, clouds, light walls, gliders, camera, effects.
+src/render/   three.js: sky, clouds, wonders, obstacles, light walls, ships, camera, effects.
 src/ui/       Yellow menus, flight HUD with radar, touch controls, styles.
 src/input/    Keyboard, gamepad and touch merged into one pilot input.
 src/audio/    All sounds made live with the Web Audio API.
@@ -97,7 +99,7 @@ src/online/   Online match logic (independent of the network), LiveKit link, ses
 src/net/      Calls to the leaderboard and game list.
 server/       Leaderboard and game list logic, small Firestore and LiveKit REST clients.
 netlify/functions/  The API endpoints.
-tests/        Simulation, replay, leaderboard, online match and game list tests.
+tests/        Simulation, replay, leaderboard, online match, game list, shot, special and obstacle tests.
 ```
 
 The deterministic core runs on the server too, which lets it check records by replaying recorded inputs.

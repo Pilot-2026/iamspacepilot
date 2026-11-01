@@ -335,6 +335,13 @@ describe('online match', () => {
     };
     put(a.match.world!, 0, -30);
     put(b.match.world!, 1, 20);
+    // Random round seeds place bonus rings anywhere: keep them out of the line of fire.
+    for (const w of [a.match.world!, b.match.world!]) {
+      for (const r of w.rings) {
+        r.active = false;
+        r.respawnTick = 1e9;
+      }
+    }
     const straight: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false };
     fly(net, 6, () => straight, 1);
     // Only Bravo's device may report hits on Bravo's glider.

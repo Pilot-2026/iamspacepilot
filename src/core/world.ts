@@ -20,6 +20,7 @@ import {
 } from './config';
 import { integrateGlider, tailPoint, type Glider } from './glider';
 import { LEVELS, type LevelSpec } from './levels';
+import { LEVEL_OBSTACLES, Obstacle } from './obstacles';
 import { BIG_WALL, POWERS, POWER_ORDER, RAPID_INTERVAL, SEEKER_CONE, SEEKER_HOMING, ringHash, type PowerId } from './powerups';
 import { JAM_TICKS, SHIPS, SHOCKWAVE_RADIUS, type ShipId, type SpecialKind } from './ships';
 import { AXIS_FWD, AXIS_LEFT, AXIS_UP, Quat, TWO_PI, V3, dcos, dsin } from './math';
@@ -76,6 +77,9 @@ export interface Ring {
   /** The power-up this ring gives. */
   power: PowerId;
 }
+
+/** A ship closer than this to an obstacle's surface crashes into it. */
+export const OBSTACLE_HIT = 1.1;
 
 /** Ticks until a used ring appears again somewhere else. */
 const RING_RESPAWN = 8 * TICK_RATE;
@@ -139,6 +143,8 @@ export class World {
   readonly rings: Ring[] = [];
   readonly bolts: Bolt[] = [];
   readonly shots: Shot[] = [];
+  /** Deadly shapes inside the arena (islands, crystals, rings ...). */
+  readonly obstacles: Obstacle[] = [];
   /** Events of the last step. */
   readonly events: SimEvent[] = [];
   /** Online: events from the network, handed out with the next step. */
@@ -232,6 +238,7 @@ export class World {
       });
       this.trails.push(new Trail());
     });
+    for (const def of LEVEL_OBSTACLES[setup.level] ?? []) this.obstacles.push(new Obstacle(def));
     for (let k = 0; k < this.spec.rings; k++) {
       const ring: Ring = { active: true, c: new V3(), n: new V3(1, 0, 0), respawnTick: 0, count: 0, power: 'repair' };
       this.placeRing(ring, k);
@@ -256,6 +263,7 @@ export class World {
   /** Advances the world by one tick. inputs[i] is used for human pilot i. */
   step(inputs: ReadonlyArray<PilotInput | undefined>): void {
     this.events.length = 0;
+    for (const o of this.obstacles) o.update(this.tick);
     if (this.queued.length) {
       this.events.push(...this.queued);
       this.queued.length = 0;
@@ -521,6 +529,45 @@ export class World {
     this.queued.push({ type: 'power', id, power, ring: k, n });
   }
 
+  /**
+   * Distance from (x, y, z) to the nearest obstacle surface (1e9 if none),
+   * and which obstacle that is in nearestObstacle.
+   */
+  obstacleDist(x: number, y: number, z: number): number {
+    let best = 1e9;
+    let idx = -1;
+    for (let k = 0; k < this.obstacles.length; k++) {
+      const o = this.obstacles[k];
+      const dx = x - o.c.x;
+      const dy = y - o.c.y;
+      const dz = z - o.c.z;
+      const rough = Math.sqrt(dx * dx + dy * dy + dz * dz) - o.reach;
+      if (rough >= best) continue;
+      const d = o.dist(x, y, z);
+      if (d < best) {
+        best = d;
+        idx = k;
+      }
+    }
+    this.nearestObstacle = idx;
+    return best;
+  }
+
+  /** Index of the obstacle found by the last obstacleDist call. */
+  nearestObstacle = -1;
+
+  /** How far along the unit direction d from p until within `margin` of an obstacle (at most len). */
+  obstacleRay(p: V3, d: V3, len: number, margin: number): number {
+    if (!this.obstacles.length) return len;
+    let t = 0;
+    for (let k = 0; k < 48 && t < len; k++) {
+      const s = this.obstacleDist(p.x + d.x * t, p.y + d.y * t, p.z + d.z * t) - margin;
+      if (s < 0.05) return t;
+      t += s > 0.5 ? s : 0.5;
+    }
+    return len;
+  }
+
   /** True while glider g phases through walls and shots (Halo special). */
   phasing(g: Glider): boolean {
     return g.ship.special.kind === 'phase' && this.tick < g.specialUntil;
@@ -746,7 +793,7 @@ export class World {
       }
       s.pPrev.copy(s.p);
       s.p.addScaled(s.d, s.speed * DT);
-      if (boundaryHit(arena, R, s.p)) {
+      if (boundaryHit(arena, R, s.p) || (this.obstacles.length && this.obstacleDist(s.p.x, s.p.y, s.p.z) < 0)) {
         s.alive = false;
         continue;
       }
@@ -880,6 +927,10 @@ export class World {
     const core = this.spec.core;
     if (core && p.lengthSq() < core.radius * core.radius) return { kind: 'core', by: -1, seg: -1 };
 
+    if (this.obstacles.length && !this.phasing(g) && this.obstacleDist(p.x, p.y, p.z) < OBSTACLE_HIT) {
+      return { kind: 'obstacle', by: -1, seg: this.nearestObstacle };
+    }
+
     const kind = boundaryHit(this.spec.arena, R, p);
     return kind ? { kind, by: -1, seg: -1 } : null;
   }
@@ -905,11 +956,15 @@ export class World {
     const arena = this.spec.arena;
     const rng = new Rng(ringHash(this.seed, k, ring.count));
     const R = arena.minRadius * 0.85;
-    const a = rng.range(0, TWO_PI);
-    const r = Math.sqrt(rng.next()) * R;
     const top = Math.min(30, arena.ceilY - 15);
-    const y = rng.range(arena.floorY + 18, top);
-    ring.c.set(dcos(a) * r, y, dsin(a) * r);
+    // A few tries to keep the ring clear of obstacles.
+    for (let tries = 0; tries < 8; tries++) {
+      const a = rng.range(0, TWO_PI);
+      const r = Math.sqrt(rng.next()) * R;
+      const y = rng.range(arena.floorY + 18, top);
+      ring.c.set(dcos(a) * r, y, dsin(a) * r);
+      if (this.obstacleDist(ring.c.x, ring.c.y, ring.c.z) > RING_RADIUS + 5) break;
+    }
     const b = rng.range(0, TWO_PI);
     ring.n.set(dcos(b), 0, dsin(b));
     ring.power = POWER_ORDER[rng.int(POWER_ORDER.length)];

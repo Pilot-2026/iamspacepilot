@@ -104,7 +104,7 @@ export const SHIPS: Readonly<Record<ShipId, ShipSpec>> = {
     special: {
       kind: 'phase',
       name: 'Phase Shift',
-      text: 'For 1.5 seconds you fly straight through walls and shots pass through you.',
+      text: 'For 1.5 seconds you fly straight through walls and obstacles, and shots pass through you.',
       cooldown: 14 * 60,
       duration: 90,
     },

@@ -14,6 +14,7 @@ import {
   type ShieldOptions,
 } from './shaders';
 import { cloudTexture, sharedTextures } from './textures';
+import { makeWonder, type WonderKind } from './wonders';
 
 /** Everything that makes a level look the way it does. */
 export interface LevelEnv {
@@ -67,7 +68,22 @@ interface Look {
   nebula?: { dir: V3t; color: number; opacity: number; size: number }[];
   core?: { color: number; glow: number };
   particles?: { kind: 'snow' | 'streak' | 'motes' | 'updraft'; count: number; color: number; size: number };
+  /** Strange and wonderful things beyond the arena. */
+  wonders?: WonderKind[];
 }
+
+const WONDERS: Record<LevelId, WonderKind[]> = {
+  'cloud-sea': ['balloons', 'skywhales'],
+  'storm-eye': ['debris', 'eye'],
+  'frost-heights': ['snowglobe', 'paperplanes'],
+  'jet-stream': ['zeppelins', 'paperplanes'],
+  aurora: ['jellyfish', 'planets'],
+  orbit: ['cubeplanet', 'astronaut', 'planets'],
+  'moon-shadow': ['discomoon', 'planets'],
+  'ring-world': ['donut', 'train'],
+  nebula: ['blackhole', 'spacewhales', 'planets'],
+  'lattice-core': ['tesseract', 'tetris'],
+};
 
 const v = (a: V3t) => new THREE.Vector3(a[0], a[1], a[2]).normalize();
 const SUN_ORBIT: V3t = [0.75, -0.1, -0.65];
@@ -668,6 +684,12 @@ export function createLevelEnv(id: LevelId): LevelEnv {
     });
   }
   particles(look, arena, spec.updraft?.radius ?? 18, spec.wind?.x ?? 5, group, updaters);
+
+  (look.wonders ?? WONDERS[id]).forEach((kind, i) => {
+    const wd = makeWonder(kind, spec.index * 7 + i);
+    group.add(wd.group);
+    updaters.push((_w, time, dt, camera) => wd.update(time, dt, camera));
+  });
 
   const shield = buildShield(arena, look.shield);
   group.add(shield.group);

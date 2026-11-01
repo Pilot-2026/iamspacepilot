@@ -796,7 +796,7 @@ export class Menu {
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span>v0.8 · Four ships</span><span>Fly free. Leave light behind.</span>`,
+      `<span>v0.9 · Crazy worlds</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
@@ -848,6 +848,7 @@ export class Menu {
       <p class="m-text">Your glider leaves a wall of light. Every wall is deadly, yours too. So are the arena shield and the floor below. The shield closes in after 30 seconds. The last pilot flying wins.</p>
       <p class="m-text">The wall turns with your glider. Fly level and it stands upright. Roll 90° and it lies flat like a floor. Keep rolling and it twists into a spiral. Fly close along a wall to recharge your boost.</p>
       <p class="m-text">Your gun fires shots that fly straight through walls and only hit other ships. They curve a little towards a ship in front of them. Three hits bring a ship down (the Bulwark takes five). Hold the trigger too long and the gun overheats.</p>
+      <p class="m-text">Every level has obstacles in the arena: sky islands, spires, turbine rings, asteroids and more, and many of them move. Flying into one is deadly and shots fizzle on them. The radar shows their shape, and a warning appears when you get close.</p>
       <p class="m-text">Every ship has a special ability on <kbd>C</kbd> that recharges after use. Bonus rings give boost and the bonus they show: triple shot, big wall, shield, cool gun, turbo, seeker shots or a repair.</p>
       <div class="keys-wrap">
         <table class="keys">
