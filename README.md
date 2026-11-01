@@ -21,6 +21,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 - Bonus rings: fly through one for boost and the bonus it shows by colour: triple shot, big wall, shield, cool gun, turbo, seeker shots or repair. Rings work online too.
 - Light walls are twice as high as before. They leave the ship narrow and spread out behind it.
 - Music: twelve electronic tracks made live in the browser (one per level, plus menu and intro), with intro, build-up, drop and break; the mix opens up in flight and gets muffled after a crash or in the pause menu. Press M or the music button to switch it on or off at any time; volume in Settings.
+- Intro: the four ships fly at you, roll, fire and leave walls of light while the title builds itself from flying letters and words (any key or tap skips it). Behind every menu small ships cross the screen with fading trails, always beneath the text; the start screen is 5% see-through and the level worlds shine through.
 - Steering sounds: turning left and right hiss from that side in different pitches, climbing rises, diving rushes low, rolling whirrs, and every move starts with a short thruster puff.
 - Keyboard, gamepad and touch (floating stick, boost and roll buttons).
 - The arena shield, floor and ceiling are drawn as a glowing grid that turns red and thick when you get close, with a distance warning and a warning tone.

@@ -7,6 +7,7 @@ import type { OnlineSession } from '../online/session';
 import { LOCAL_TOP, saveProfile, validateCallsign, type Profile, type Quality } from '../storage/profile';
 import { SHIPS, isShip } from '../core/ships';
 import { hangarScreen } from './hangar';
+import { playIntro } from './intro';
 import { ARROW, esc, frame, ordinal, wordmark } from './html';
 import {
   clampBots,
@@ -48,7 +49,11 @@ export interface MenuHandlers {
   online: OnlineHandlers;
   /** Hangar: draw turning ships into these canvases (none = stop). */
   ships(canvases: HTMLCanvasElement[]): void;
+  /** The menu now shows this screen (null: hidden). */
+  screen(s: MenuScreen | null): void;
 }
+
+export type MenuScreen = Screen;
 
 export interface OnlineHandlers {
   list(): Promise<ListResult>;
@@ -65,6 +70,7 @@ export interface OnlineHandlers {
 }
 
 type Screen =
+  | 'intro'
   | 'callsign'
   | 'main'
   | 'solo'
@@ -117,6 +123,9 @@ export class Menu {
   /** Where the hangar returns to. */
   private hangarReturn: Screen = 'main';
 
+  /** Yellow background layer under the ship stage. */
+  private readonly bg: HTMLElement | null = document.getElementById('menu-bg');
+
   constructor(
     private readonly root: HTMLElement,
     private readonly profile: Profile,
@@ -135,6 +144,23 @@ export class Menu {
   hide(): void {
     if (this.screen === 'hangar') this.h.ships([]);
     this.root.hidden = true;
+    if (this.bg) this.bg.hidden = true;
+    this.h.screen(null);
+  }
+
+  /** The title sequence; then done() decides what comes next. */
+  showIntro(done: () => void): void {
+    this.screen = 'intro';
+    this.root.hidden = false;
+    this.setBg('intro');
+    this.h.screen('intro');
+    playIntro(this.root, done);
+  }
+
+  private setBg(cls: string): void {
+    if (!this.bg) return;
+    this.bg.hidden = false;
+    this.bg.className = cls;
   }
 
   get current(): Screen {
@@ -147,6 +173,8 @@ export class Menu {
     if (this.screen === 'hangar' && screen !== 'hangar') this.h.ships([]);
     this.screen = screen;
     this.root.hidden = false;
+    this.setBg(screen === 'main' ? 'see-through' : '');
+    this.h.screen(screen);
     this.root.innerHTML = this.render(screen);
     this.root.scrollTop = 0;
     const first =
@@ -678,6 +706,8 @@ export class Menu {
 
   private render(s: Screen): string {
     switch (s) {
+      case 'intro':
+        return '';
       case 'callsign':
         return this.callsignScreen();
       case 'main':
@@ -766,7 +796,7 @@ export class Menu {
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span>v0.6 · Four ships</span><span>Fly free. Leave light behind.</span>`,
+      `<span>v0.8 · Four ships</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
