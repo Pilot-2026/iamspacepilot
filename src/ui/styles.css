@@ -158,6 +158,27 @@ body {
   white-space: nowrap;
 }
 
+/* Start screen: title, a few words and the credit line. */
+.m-hero {
+  display: grid;
+  gap: 12px;
+}
+
+.m-tagline {
+  margin: 0;
+  max-width: 34ch;
+  font: 600 clamp(17px, 1.9vw, 21px) / 1.45 var(--f-body);
+  text-wrap: pretty;
+}
+
+.m-credit {
+  margin: 0;
+  font: 600 12px/1.5 var(--f-data);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
 .wordmark .w1 {
   font-weight: 300;
 }

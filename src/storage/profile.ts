@@ -8,7 +8,10 @@ export type Quality = 'auto' | 'low' | 'high';
 
 export interface Settings {
   volume: number;
+  /** Flight mode: arrow up lowers the nose. */
   invertPitch: boolean;
+  /** Version of the control defaults this profile has seen. */
+  controls: number;
   autoHorizon: boolean;
   quality: Quality;
 }
@@ -75,7 +78,7 @@ export function defaultProfile(): Profile {
     v: 1,
     callsign: '',
     pilotKey: newPilotKey(),
-    settings: { volume: 0.8, invertPitch: false, autoHorizon: isTouch, quality: 'auto' },
+    settings: { volume: 0.8, invertPitch: true, controls: 2, autoHorizon: isTouch, quality: 'auto' },
     solo: { level: 'cloud-sea', bots: 3, difficulty: 'pilot' },
     unlocked: 1,
     records: {},
@@ -88,10 +91,13 @@ export function defaultProfile(): Profile {
 export function loadProfile(): Profile {
   const base = defaultProfile();
   let p: Profile = base;
+  /** Control defaults version stored in this browser (0 before flight mode became standard). */
+  let storedControls = 2;
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const stored = JSON.parse(raw) as Partial<Profile>;
+      storedControls = Number((stored.settings as Partial<Settings> | undefined)?.controls ?? 0);
       p = {
         ...base,
         ...stored,
@@ -116,6 +122,11 @@ export function loadProfile(): Profile {
     open = Math.max(open, rec.wins > 0 ? i + 1 : i);
   }
   p.unlocked = Math.max(1, Math.min(LEVEL_ORDER.length, open));
+  // Control defaults v2: flight mode (arrow up = nose down) is the standard now.
+  if (!(storedControls >= 2)) {
+    p.settings.invertPitch = true;
+    p.settings.controls = 2;
+  }
   if (!LEVELS[p.solo.level] || LEVELS[p.solo.level].index > p.unlocked) p.solo.level = 'cloud-sea';
   if (!LEVELS[p.online.level]) p.online.level = 'cloud-sea';
   p.online.bots = Math.max(0, Math.min(7, Number(p.online.bots) | 0));

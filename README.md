@@ -45,15 +45,17 @@ The functions need three environment variables in Netlify, from a LiveKit Cloud 
 
 ## Controls
 
-| Action        | Keyboard            | Gamepad    | Touch            |
-| ------------- | ------------------- | ---------- | ---------------- |
-| Turn          | A / D or ← / →      | Left stick | Left thumb stick |
-| Nose up, down | W / S or ↑ / ↓      | Left stick | Left thumb stick |
-| Roll          | Q / E               | LB / RB    | Roll buttons     |
-| Boost         | Space               | RT or A    | Boost button     |
-| Fire          | F or left click     | LT or X    | Fire button      |
-| Pause         | Esc or P            | Start      | II button        |
-| Talk (online) | Hold T              | Y or d-pad up | Mic button (tap on, tap off) |
+| Action                      | Keyboard              | Gamepad       | Touch                        |
+| --------------------------- | --------------------- | ------------- | ---------------------------- |
+| Turn                        | ← / → or A / D        | Left stick    | Left thumb stick             |
+| Nose down, up (flight mode) | ↑ / ↓ or W / S        | Left stick    | Left thumb stick             |
+| Roll                        | Q / E                 | LB / RB       | Roll buttons                 |
+| Fire                        | Space or left click   | LT or X       | Fire button                  |
+| Boost                       | ⌘ Command or Shift    | RT or A       | Boost button                 |
+| Talk (online)               | Hold R                | Y or d-pad up | Mic button (tap on, tap off) |
+| Pause                       | Esc or P              | Start         | II button                    |
+
+Flight mode is on by default: arrow up lowers the nose, like in a plane. It can be switched off in Settings.
 
 ## Develop
 
