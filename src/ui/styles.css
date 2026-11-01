@@ -1564,3 +1564,111 @@ kbd {
   border-color: var(--hud);
   box-shadow: 0 0 14px var(--hud);
 }
+
+/* ---------- Music button: always there, in menus and in flight ---------- */
+
+.music-btn {
+  position: fixed;
+  z-index: 45;
+  right: calc(16px + var(--safe-r));
+  bottom: calc(16px + var(--safe-b));
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  background: var(--yellow);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.music-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.music-btn .off {
+  display: none;
+}
+
+.music-btn[aria-pressed='false'] {
+  opacity: 0.7;
+}
+
+.music-btn[aria-pressed='false'] .off {
+  display: block;
+}
+
+.music-btn:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+body.flying .music-btn {
+  top: calc(46px + var(--safe-t));
+  bottom: auto;
+  right: calc(50% + 28px);
+  width: 40px;
+  height: 40px;
+  color: #fff;
+  background: rgba(8, 6, 16, 0.45);
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+}
+
+body.flying .music-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.music-toast {
+  position: fixed;
+  z-index: 45;
+  right: calc(70px + var(--safe-r));
+  bottom: calc(24px + var(--safe-b));
+  padding: 7px 12px;
+  font: 600 12px/1 var(--f-data);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--yellow);
+  border: 2px solid var(--ink);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.music-toast.show {
+  animation: toast 3.2s ease forwards;
+}
+
+body.flying .music-toast {
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  top: calc(94px + var(--safe-t));
+  transform: translateX(-50%);
+  color: #fff;
+  background: rgba(8, 6, 16, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+@keyframes toast {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .music-toast.show {
+    animation: none;
+    opacity: 1;
+  }
+}

@@ -363,8 +363,18 @@ export class Menu {
     }
   }
 
+  /** Redraws the settings screen if it is open (music switched with M). */
+  refreshSettings(): void {
+    if (!this.root.hidden && this.screen === 'settings') this.settingsChanged();
+  }
+
   private onInput(e: Event): void {
     const t = e.target as HTMLInputElement;
+    if (t.id === 'musicvol') {
+      this.profile.settings.musicVolume = Number(t.value) / 100;
+      this.h.settingsChanged();
+      return;
+    }
     if (t.id === 'gamecode') {
       const v = t.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (v !== t.value) t.value = v;
@@ -517,6 +527,10 @@ export class Menu {
         break;
       case 'invert':
         p.settings.invertPitch = val === 'on';
+        this.settingsChanged();
+        break;
+      case 'music':
+        p.settings.music = val === 'on';
         this.settingsChanged();
         break;
       case 'assist':
@@ -837,11 +851,14 @@ export class Menu {
           <div class="seg"><button data-act="rename" aria-pressed="false">${esc(this.profile.callsign || 'Set callsign')}</button></div></div>
         <div class="m-row"><label for="volume">Sound</label>
           <input id="volume" class="m-range" type="range" min="0" max="100" step="5" value="${Math.round(s.volume * 100)}"></div>
+        <div class="m-row"><span class="lbl">Music</span>${seg('music', [['on', 'On'], ['off', 'Off']], s.music ? 'on' : 'off')}</div>
+        <div class="m-row"><label for="musicvol">Music volume</label>
+          <input id="musicvol" class="m-range" type="range" min="0" max="100" step="5" value="${Math.round(s.musicVolume * 100)}"></div>
         <div class="m-row"><span class="lbl">Flight mode</span>${seg('invert', [['on', 'On: ↑ nose down'], ['off', 'Off: ↑ nose up']], s.invertPitch ? 'on' : 'off')}</div>
         <div class="m-row"><span class="lbl">Auto-horizon</span>${seg('assist', [['off', 'Off'], ['on', 'On']], s.autoHorizon ? 'on' : 'off')}</div>
         <div class="m-row"><span class="lbl">Graphics</span>${seg('quality', [['auto', 'Auto'], ['low', 'Low'], ['high', 'High']], s.quality)}</div>
       </div>
-      <p class="m-hint">Flight mode steers like a plane: arrow up (or stick forward) lowers the nose. Auto-horizon levels your ship slowly when you are not rolling.</p>
+      <p class="m-hint">Flight mode steers like a plane: arrow up (or stick forward) lowers the nose. Auto-horizon levels your ship slowly when you are not rolling. Music: twelve tracks, one for every level; press M or the music button to switch it on or off at any time.</p>
       <div class="m-list"><button class="mi" data-act="back">Back ${ARROW}</button></div>`,
     );
   }

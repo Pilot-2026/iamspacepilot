@@ -533,7 +533,7 @@ export interface ShipMesh {
 export function makeShip(id: ShipId, color: number, glowTexture: THREE.Texture): ShipMesh {
   const b = built(id);
   const group = new THREE.Group();
-  const goldMat = new THREE.MeshStandardMaterial({ color: 0xf6c21c, emissive: 0x4a3400, metalness: 0.22, roughness: 0.42, flatShading: true });
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xf6c21c, emissive: 0x5a3f00, metalness: 0.22, roughness: 0.42, flatShading: true });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x15121c, emissive: 0x050308, metalness: 0.75, roughness: 0.16, flatShading: true });
   const glowMat = new THREE.MeshBasicMaterial({ color, toneMapped: false });
   const gold = new THREE.Mesh(b.gold, goldMat);

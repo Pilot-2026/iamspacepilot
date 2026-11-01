@@ -20,6 +20,8 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
   - **Bulwark** (heavy): Shockwave wipes out enemy shots nearby and jams their guns; takes five hits.
 - Bonus rings: fly through one for boost and the bonus it shows by colour: triple shot, big wall, shield, cool gun, turbo, seeker shots or repair. Rings work online too.
 - Light walls are twice as high as before. They leave the ship narrow and spread out behind it.
+- Music: twelve electronic tracks made live in the browser (one per level, plus menu and intro), with intro, build-up, drop and break; the mix opens up in flight and gets muffled after a crash or in the pause menu. Press M or the music button to switch it on or off at any time; volume in Settings.
+- Steering sounds: turning left and right hiss from that side in different pitches, climbing rises, diving rushes low, rolling whirrs, and every move starts with a short thruster puff.
 - Keyboard, gamepad and touch (floating stick, boost and roll buttons).
 - The arena shield, floor and ceiling are drawn as a glowing grid that turns red and thick when you get close, with a distance warning and a warning tone.
 - Highscores: a score for every round, the top 10 on this device and an online leaderboard for all pilots.
@@ -61,6 +63,7 @@ The functions need three environment variables in Netlify, from a LiveKit Cloud 
 | Boost                       | ⌘ Command or Shift    | RT or A       | Boost button                 |
 | Special ability             | C                     | B             | Special button               |
 | Talk (online)               | Hold R                | Y or d-pad up | Mic button (tap on, tap off) |
+| Music on / off              | M                     |               | Music button                 |
 | Pause                       | Esc or P              | Start         | II button                    |
 
 Flight mode is on by default: arrow up lowers the nose, like in a plane. It can be switched off in Settings.

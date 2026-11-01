@@ -43,6 +43,9 @@ class App {
   private readonly touch: TouchControls;
   private readonly input: InputManager;
   private view: GameView | null = null;
+  private musicButton: HTMLButtonElement;
+  private trackToast: HTMLElement | null = null;
+  private toastTimer = 0;
   private previews: ShipPreviews | null = null;
   private world: World | null = null;
   private state: State = 'menu';
@@ -75,7 +78,10 @@ class App {
     this.touch.hide();
     this.hud = new Hud($('hud'), () => this.pause(), () => this.cheat());
     this.hud.hide();
-    this.input = new InputManager(this.touch, () => this.togglePause(), () => this.cheat());
+    this.input = new InputManager(this.touch, () => this.togglePause(), () => this.cheat(), () => this.toggleMusic());
+    this.musicButton = this.makeMusicButton();
+    this.sound.onTrack = (name) => this.showTrack(name);
+    this.sound.playMusic('menu');
     this.hud.specialButton = this.touch.specialButton;
     this.menu = new Menu($('menu'), this.profile, {
       launch: () => this.launch(),
@@ -147,6 +153,9 @@ class App {
   private applySettings(): void {
     const s = this.profile.settings;
     this.sound.setVolume(s.volume);
+    this.sound.setMusicEnabled(s.music);
+    this.sound.setMusicVolume(s.musicVolume);
+    this.updateMusicButton();
     this.input.invertPitch = s.invertPitch;
     if (this.view) {
       const dpr = window.devicePixelRatio || 1;
@@ -196,8 +205,82 @@ class App {
     this.state = 'playing';
     this.sound.resume();
     this.sound.startEngine();
+    this.sound.playMusic(this.world.spec.id);
     this.goFullscreen();
     this.requestWakeLock();
+  }
+
+  // ---- music ----
+
+  private makeMusicButton(): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'music-btn';
+    b.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.6" fill="currentColor"/><circle cx="17.5" cy="16" r="2.6" fill="currentColor"/><path class="off" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.sound.unlock();
+      this.toggleMusic();
+      b.blur();
+    });
+    document.getElementById('app')?.append(b);
+    const toast = document.createElement('div');
+    toast.className = 'music-toast';
+    toast.hidden = true;
+    document.getElementById('app')?.append(toast);
+    this.trackToast = toast;
+    return b;
+  }
+
+  /** M key or the music button: music on or off. */
+  private toggleMusic(): void {
+    const s = this.profile.settings;
+    s.music = !s.music;
+    saveProfile(this.profile);
+    this.sound.setMusicEnabled(s.music);
+    this.updateMusicButton();
+    this.menu.refreshSettings();
+  }
+
+  private updateMusicButton(): void {
+    const b = this.musicButton;
+    if (!b) return;
+    const on = this.profile.settings.music;
+    b.setAttribute('aria-pressed', String(on));
+    b.setAttribute('aria-label', on ? 'Music on (M)' : 'Music off (M)');
+    b.title = on ? 'Music on (M)' : 'Music off (M)';
+  }
+
+  /** Shows the name of a new music track for a moment. */
+  private showTrack(name: string): void {
+    const t = this.trackToast;
+    if (!t || !this.profile.settings.music) return;
+    t.textContent = `♪ ${name}`;
+    t.hidden = false;
+    t.classList.remove('show');
+    void t.offsetWidth;
+    t.classList.add('show');
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => (t.hidden = true), 3200);
+  }
+
+  /** Music mood: muffled in pauses and after a crash, open in flight. */
+  private updateMusicMood(): void {
+    const w = this.world;
+    document.body.classList.toggle('flying', this.state !== 'menu');
+    if (this.state === 'menu' || !w) {
+      this.sound.setMusicMood('menu');
+      return;
+    }
+    if (this.state === 'paused') {
+      this.sound.setMusicMood(this.session ? 'flight' : 'pause');
+      return;
+    }
+    const g = w.gliders[this.local];
+    if (w.phase === 'countdown') this.sound.setMusicMood('countdown');
+    else if (!g || !g.alive) this.sound.setMusicMood('down');
+    else this.sound.setMusicMood(g.boosting ? 'boost' : 'flight');
   }
 
   private togglePause(): void {
@@ -215,7 +298,7 @@ class App {
       this.menu.show('online-pause');
       return;
     }
-    this.sound.suspend();
+    this.sound.stopEngine();
     this.menu.show('pause');
     this.releaseWakeLock();
   }
@@ -232,6 +315,8 @@ class App {
       this.last = performance.now();
     }
     this.sound.resume();
+    const g = this.world?.gliders[this.local];
+    if (g?.alive) this.sound.startEngine();
     this.requestWakeLock();
   }
 
@@ -240,6 +325,7 @@ class App {
     this.input.capturing = false;
     this.sound.stopEngine();
     this.sound.resume();
+    this.sound.playMusic('menu');
     this.hud.hide();
     this.touch.hide();
     this.view?.clear();
@@ -253,6 +339,7 @@ class App {
     const dt = Math.min((now - this.last) / 1000, 0.25);
     this.last = now;
     if (this.menu.visible) this.menu.pollGamepad();
+    this.updateMusicMood();
     if (this.session) {
       this.frameOnline(now, dt);
       return;
@@ -285,7 +372,10 @@ class App {
     const portrait = isTouchDevice() && window.innerHeight > window.innerWidth;
     this.hud.update(w, PLAYER, dt, portrait, this.solo ? liveScore(w, PLAYER, this.solo.difficulty) : 0);
     const g = w.gliders[PLAYER];
-    if (g.alive && w.phase !== 'countdown') this.sound.updateEngine(g.speed, g.boosting, g.wallDist, this.hud.boundaryDist);
+    if (g.alive && w.phase !== 'countdown') {
+      this.sound.updateEngine(g.speed, g.boosting, g.wallDist, this.hud.boundaryDist);
+      if (this.state === 'playing') this.sound.maneuver(g.input.steerX, g.input.steerY, g.input.roll);
+    }
 
     if (this.endAt && now >= this.endAt) this.finish();
   }
@@ -618,6 +708,7 @@ class App {
     this.state = 'playing';
     this.sound.resume();
     this.sound.startEngine();
+    this.sound.playMusic(w.spec.id);
     this.goFullscreen();
     this.requestWakeLock();
     const g = w.gliders[local];
@@ -692,6 +783,7 @@ class App {
     this.resultsAt = 0;
     this.endAt = 0;
     this.menu.showList(notice);
+    this.sound.playMusic('menu');
     this.releaseWakeLock();
   }
 
@@ -722,7 +814,10 @@ class App {
     const portrait = isTouchDevice() && window.innerHeight > window.innerWidth;
     this.hud.update(w, this.local, dt, portrait, s.match.round);
     const g = w.gliders[this.local];
-    if (g.alive && w.phase !== 'countdown') this.sound.updateEngine(g.speed, g.boosting, g.wallDist, this.hud.boundaryDist);
+    if (g.alive && w.phase !== 'countdown') {
+      this.sound.updateEngine(g.speed, g.boosting, g.wallDist, this.hud.boundaryDist);
+      if (this.state === 'playing') this.sound.maneuver(g.input.steerX, g.input.steerY, g.input.roll);
+    }
     if (this.resultsAt && now >= this.resultsAt) this.showOnlineResults();
   }
 
@@ -752,6 +847,8 @@ class App {
 
   /** Online the game cannot pause: in the background your glider drops out, the host keeps the round going. */
   private visibilityChanged(): void {
+    if (document.hidden) this.sound.suspend();
+    else this.sound.resume();
     const s = this.session;
     if (!s) {
       if (document.hidden && this.state === 'playing') this.pause();

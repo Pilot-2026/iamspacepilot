@@ -40,12 +40,17 @@ export class InputManager {
     private readonly touch: TouchControls,
     private readonly onPauseKey: () => void,
     private readonly onCheat: () => void,
+    private readonly onMusicKey: () => void = () => undefined,
   ) {
     window.addEventListener('keydown', (e) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.code === 'Escape' || e.code === 'KeyP') {
         if (!e.repeat) this.onPauseKey();
+        return;
+      }
+      if (e.code === 'KeyM' && !e.repeat) {
+        this.onMusicKey();
         return;
       }
       if ((e.code === 'Digit1' || e.code === 'Numpad1') && !e.repeat) {
