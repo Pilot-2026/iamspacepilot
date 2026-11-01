@@ -44,7 +44,7 @@ export function makeBrain(skill: Difficulty, index: number): BotBrain {
     aimCos: s.aimCos,
     fireRate: s.fireRate,
     heatLimit: s.heatLimit,
-    input: { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false },
+    input: { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false, special: false },
   };
 }
 
@@ -113,6 +113,36 @@ export function botThink(w: World, i: number): void {
       hasAim = true;
     }
   }
+  // Nobody to hunt: go for a bonus ring in front, if no other pilot is closer to it.
+  let ringAim = false;
+  if (!hasAim && huntAllowed) {
+    g.qb.rotate(DIRS[0], tf);
+    let best2 = 70 * 70;
+    for (const ring of w.rings) {
+      if (!ring.active) continue;
+      const rx = ring.c.x - p.x;
+      const ry = ring.c.y - p.y;
+      const rz = ring.c.z - p.z;
+      const d2 = rx * rx + ry * ry + rz * rz;
+      if (d2 >= best2 || rx * tf.x + ry * tf.y + rz * tf.z < 0) continue;
+      let closer = false;
+      for (const o of w.gliders) {
+        if (o.id !== i && o.alive && o.p.distSq(ring.c) < d2) {
+          closer = true;
+          break;
+        }
+      }
+      if (closer) continue;
+      best2 = d2;
+      aim.set(rx, ry, rz);
+    }
+    if (best2 < 70 * 70) {
+      aimDist = Math.sqrt(best2);
+      aim.scale(1 / aimDist);
+      hasAim = true;
+      ringAim = true;
+    }
+  }
 
   const midY = (arena.floorY + Math.min(arena.ceilY, R * 0.45)) * 0.5;
   const horiz = Math.sqrt(p.x * p.x + p.z * p.z);
@@ -132,7 +162,7 @@ export function botThink(w: World, i: number): void {
     let score = free * (danger ? 1.6 : 1);
     if (free >= b.look) score += 4;
     score -= (1 - ld.z) * (danger ? 2 : 5);
-    if (hasAim && !danger) score += b.aggression * 14 * d.dot(aim);
+    if (hasAim && !danger) score += (ringAim ? 8 : b.aggression * 14) * d.dot(aim);
     // Stay well clear of floor and ceiling: a full turn needs about 18 m.
     const fy = p.y + d.y * 20;
     if (fy < arena.floorY + 16) score -= 20;
@@ -168,6 +198,39 @@ export function botThink(w: World, i: number): void {
   inp.roll = 0;
   inp.boost = fwdFree >= b.look - 1 && g.energy > 0.3 && (toAim ? aimDist < 60 : g.energy > 0.92);
   inp.fire = wantsToFire(w, i, b);
+  inp.special = wantsSpecial(w, i, b, fwdFree, toAim ? aimDist : 1e9);
+}
+
+/** Uses the ship's special ability when it helps. */
+function wantsSpecial(w: World, i: number, b: BotBrain, fwdFree: number, huntDist: number): boolean {
+  const g = w.gliders[i];
+  if (w.flyTime < 5 || w.tick < g.specialReady) return false;
+  switch (g.ship.special.kind) {
+    case 'phase':
+      // About to hit a wall: phase through it.
+      return fwdFree < 10 && w.rng.next() < 0.5 + b.aggression * 0.5;
+    case 'afterburner':
+      return huntDist < 80 && w.rng.next() < b.aggression;
+    case 'burst':
+    case 'shockwave': {
+      const range = g.ship.special.kind === 'burst' ? 55 : 35;
+      g.q.rotate(AXIS_FWD, tf);
+      for (const o of w.gliders) {
+        if (o.id === i || !o.alive || (w.teams && o.team === g.team)) continue;
+        const rx = o.p.x - g.p.x;
+        const ry = o.p.y - g.p.y;
+        const rz = o.p.z - g.p.z;
+        const d2 = rx * rx + ry * ry + rz * rz;
+        if (d2 > range * range) continue;
+        if (g.ship.special.kind === 'burst') {
+          const along = rx * tf.x + ry * tf.y + rz * tf.z;
+          if (along <= 0 || along * along < 0.9 * d2) continue;
+        }
+        return w.rng.next() < 0.3 + b.aggression * 0.5;
+      }
+      return false;
+    }
+  }
 }
 
 /** Fires at a pilot in front, now and then, without letting the gun overheat. */

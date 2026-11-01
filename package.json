@@ -1,7 +1,7 @@
 {
   "name": "iamspacepilot",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "iamSpacePilot: a 3D light-wall flying game for the browser.",
   "type": "module",
   "scripts": {

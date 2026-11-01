@@ -216,6 +216,34 @@ export class Sound {
     this.tone(320, 0.4, 'sawtooth', 0.07, t, 110);
   }
 
+  /** A ship's special ability. */
+  special(kind: 'burst' | 'afterburner' | 'phase' | 'shockwave', gain = 1): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    if (kind === 'burst') {
+      [0, 0.03, 0.06].forEach((d) => this.tone(1900 - d * 4000, 0.14, 'sawtooth', 0.06 * gain, t + d, 380));
+    } else if (kind === 'afterburner') {
+      this.noiseBurst(0.9, 'lowpass', 600, 2400, 0.35 * gain, t);
+      this.tone(90, 0.8, 'sawtooth', 0.08 * gain, t, 160);
+    } else if (kind === 'phase') {
+      this.tone(420, 0.5, 'sine', 0.14 * gain, t, 1260);
+      this.tone(630, 0.5, 'triangle', 0.08 * gain, t + 0.05, 1890);
+    } else {
+      this.noiseBurst(0.7, 'lowpass', 1800, 80, 0.55 * gain, t);
+      this.tone(60, 0.7, 'sine', 0.3 * gain, t, 30);
+    }
+  }
+
+  /** The shield takes a hit or a wall. */
+  shieldPop(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    this.tone(1400, 0.25, 'triangle', 0.12, t, 300);
+    this.noiseBurst(0.25, 'highpass', 4000, 1500, 0.12, t);
+  }
+
   /** Radio squelch: a short burst of static and a beep, like a real radio keying up. */
   radio(on: boolean): void {
     const ctx = this.ctx;

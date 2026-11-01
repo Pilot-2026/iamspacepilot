@@ -12,7 +12,14 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 - 1 to 7 bots in three difficulties (Rookie, Pilot, Ace).
 - The arena shield closes in after 30 seconds.
 - Boost: hold to speed up, refill it by flying close along walls or through rings.
-- Gun: shots fly straight through walls and only hit other gliders, curving a little towards a glider in front of them. Three hits bring a glider down, a ring repairs one hit, and the gun overheats when you hold the trigger too long. Bots shoot too, never at their own team.
+- Gun: shots fly straight through walls and only hit other ships, curving a little towards a ship in front of them. Three hits bring a ship down, and the gun overheats when you hold the trigger too long. Bots shoot too, never at their own team.
+- Four ships to choose from in the hangar, each with its own handling and a special ability (key C):
+  - **Trident** (gunship): Trident Burst fires a fan of five shots; its shots fly 20% faster.
+  - **Manta** (interceptor): Afterburner, two seconds at top speed; sharpest turns, faster slipstream.
+  - **Halo** (phase runner): Phase Shift, 1.5 seconds flying through walls and shots; rolls 40% faster.
+  - **Bulwark** (heavy): Shockwave wipes out enemy shots nearby and jams their guns; takes five hits.
+- Bonus rings: fly through one for boost and the bonus it shows by colour: triple shot, big wall, shield, cool gun, turbo, seeker shots or repair. Rings work online too.
+- Light walls are twice as high as before. They leave the ship narrow and spread out behind it.
 - Keyboard, gamepad and touch (floating stick, boost and roll buttons).
 - The arena shield, floor and ceiling are drawn as a glowing grid that turns red and thick when you get close, with a distance warning and a warning tone.
 - Highscores: a score for every round, the top 10 on this device and an online leaderboard for all pilots.
@@ -21,7 +28,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 
 ## Score
 
-Per round: 10 points per second in the air, 100 per pilot you outlast, 250 per pilot that hits your wall, 200 per pilot you shoot down, 25 per hit, 50 per ring, 500 for a win. The sum is multiplied by 1 (Rookie), 1.5 (Pilot) or 2 (Ace).
+Per round: 10 points per second in the air, 100 per pilot you outlast, 250 per pilot that hits your wall, 200 per pilot you shoot down, 25 per hit, 50 per bonus ring, 500 for a win. The sum is multiplied by 1 (Rookie), 1.5 (Pilot) or 2 (Ace).
 
 ## Online leaderboard
 
@@ -52,6 +59,7 @@ The functions need three environment variables in Netlify, from a LiveKit Cloud 
 | Roll                        | Q / E                 | LB / RB       | Roll buttons                 |
 | Fire                        | Space or left click   | LT or X       | Fire button                  |
 | Boost                       | ⌘ Command or Shift    | RT or A       | Boost button                 |
+| Special ability             | C                     | B             | Special button               |
 | Talk (online)               | Hold R                | Y or d-pad up | Mic button (tap on, tap off) |
 | Pause                       | Esc or P              | Start         | II button                    |
 

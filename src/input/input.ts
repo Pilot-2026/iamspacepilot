@@ -32,7 +32,7 @@ export class InputManager {
   private padPause = false;
   /** Left mouse button held on the 3D view. */
   private mouseFire = false;
-  private readonly out: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false };
+  private readonly out: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false, special: false };
 
   private readonly cheatTaps: number[] = [];
 
@@ -133,6 +133,7 @@ export class InputManager {
     let pr = 0;
     let pb = false;
     let pf = false;
+    let ps = false;
     let pause = false;
     const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
     for (const pad of pads) {
@@ -143,6 +144,7 @@ export class InputManager {
       if (pad.buttons[5]?.pressed) pr += 1;
       if ((pad.buttons[7]?.value ?? 0) > 0.3 || pad.buttons[0]?.pressed) pb = true;
       if ((pad.buttons[6]?.value ?? 0) > 0.3 || pad.buttons[2]?.pressed) pf = true;
+      if (pad.buttons[1]?.pressed) ps = true;
       if (pad.buttons[9]?.pressed) pause = true;
     }
     if (pause && !this.padPause) this.onPauseKey();
@@ -157,6 +159,8 @@ export class InputManager {
     this.out.boost = this.key('MetaLeft', 'MetaRight', 'ShiftLeft', 'ShiftRight') || pb || t.boost;
     // Fire: Space, F or the left mouse button.
     this.out.fire = this.key('Space', 'KeyF') || this.mouseFire || pf || t.fire;
+    // Special ability: C, B on a gamepad or the touch button.
+    this.out.special = this.key('KeyC') || ps || t.special;
     return this.out;
   }
 }

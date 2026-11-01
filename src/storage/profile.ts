@@ -1,5 +1,6 @@
 import { validateCallsign } from '../core/callsign';
 import { LEVELS, LEVEL_ORDER } from '../core/levels';
+import { isShip, type ShipId } from '../core/ships';
 import type { Difficulty, LevelId } from '../core/types';
 
 export { validateCallsign };
@@ -60,6 +61,8 @@ export interface Profile {
   records: Partial<Record<LevelId, LevelRecord>>;
   highscores: Partial<Record<LevelId, LocalScore[]>>;
   online: OnlinePrefs;
+  /** The ship this pilot flies. */
+  ship: ShipId;
 }
 
 export const LOCAL_TOP = 10;
@@ -84,6 +87,7 @@ export function defaultProfile(): Profile {
     records: {},
     highscores: {},
     online: { level: 'cloud-sea', mode: 'ffa', public: true, bots: 3, difficulty: 'pilot', voiceOk: false, openMic: false },
+    ship: 'trident',
   };
 }
 
@@ -129,6 +133,7 @@ export function loadProfile(): Profile {
   }
   if (!LEVELS[p.solo.level] || LEVELS[p.solo.level].index > p.unlocked) p.solo.level = 'cloud-sea';
   if (!LEVELS[p.online.level]) p.online.level = 'cloud-sea';
+  if (!isShip(p.ship)) p.ship = 'trident';
   p.online.bots = Math.max(0, Math.min(7, Number(p.online.bots) | 0));
   saveProfile(p);
   return p;

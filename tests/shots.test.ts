@@ -4,6 +4,7 @@ import { Quat } from '../src/core/math';
 import { decodeReplay, quantize, ReplayRecorder } from '../src/core/replay';
 import { replaySolo, soloScore, soloWorldSetup, type SoloSetup } from '../src/core/solo';
 import type { PilotInput } from '../src/core/types';
+import type { ShipId } from '../src/core/ships';
 import { World, type PilotSetup } from '../src/core/world';
 
 const STRAIGHT: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false };
@@ -11,8 +12,8 @@ const FIRE: PilotInput = { ...STRAIGHT, fire: true };
 const person = (name: string, extra: Partial<PilotSetup> = {}): PilotSetup => ({ name, isBot: false, assist: true, skill: 'pilot', ...extra });
 
 /** Two pilots after the countdown, both flying along +Z: A at z=-30, B 60 m ahead. */
-function duel(opts: { teams?: boolean; wall?: boolean } = {}): World {
-  const pilots = [person('A', { team: 0 }), person('B', { team: opts.teams ? 0 : 1 })];
+function duel(opts: { teams?: boolean; wall?: boolean; shipA?: ShipId; bBehind?: boolean } = {}): World {
+  const pilots = [person('A', { team: 0, ship: opts.shipA }), person('B', { team: opts.teams ? 0 : 1 })];
   if (opts.wall) pilots.push(person('C', { remote: true, team: 1 }));
   const w = new World({ level: 'orbit', seed: 1, pilots, teams: opts.teams });
   for (let t = 0; t < 180; t++) w.step([]);
@@ -25,10 +26,10 @@ function duel(opts: { teams?: boolean; wall?: boolean } = {}): World {
     g.bank = 0;
   };
   place(0, -30);
-  place(1, 30);
+  place(1, opts.bBehind ? -90 : 30);
   if (opts.wall) {
     // A wall across the line of fire at z = -5, owned by a third glider far away.
-    w.addRemoteSamples(2, 0, [-20, 0, -5, 0, 1, 0, 20, 0, -5, 0, 1, 0]);
+    w.addRemoteSamples(2, 0, [-20, 0, -5, 0, 1, 0, 4, 20, 0, -5, 0, 1, 0, 4]);
     w.gliders[2].p.set(60, 20, 60);
   }
   return w;
@@ -40,7 +41,7 @@ function fly(w: World, ticks: number, a: PilotInput = STRAIGHT, b: PilotInput = 
 
 describe('shots', () => {
   it('fires in bursts until the gun overheats, then cools down', () => {
-    const w = duel();
+    const w = duel({ shipA: 'manta', bBehind: true });
     let shots = 0;
     for (let t = 0; t < 120; t++) {
       w.step([FIRE, STRAIGHT]);
@@ -105,6 +106,7 @@ describe('shots', () => {
     b.hull = 1;
     const ring = w.rings[0];
     ring.active = true;
+    ring.power = 'repair';
     ring.c.set(0, 0, 36);
     ring.n.set(0, 0, 1);
     fly(w, 30);
@@ -112,7 +114,7 @@ describe('shots', () => {
   });
 
   it('records the trigger in replays, so scores with shots can be checked', () => {
-    const setup: SoloSetup = { level: 'cloud-sea', seed: 77, bots: 4, difficulty: 'ace', assist: true };
+    const setup: SoloSetup = { level: 'cloud-sea', seed: 77, bots: 4, difficulty: 'ace', assist: true, ship: 'trident' };
     const w = new World(soloWorldSetup(setup, 'You'));
     const rec = new ReplayRecorder();
     let fired = 0;
@@ -131,7 +133,7 @@ describe('shots', () => {
   });
 
   it('lets bots fire', () => {
-    const setup: SoloSetup = { level: 'orbit', seed: 5, bots: 6, difficulty: 'ace', assist: true };
+    const setup: SoloSetup = { level: 'orbit', seed: 5, bots: 6, difficulty: 'ace', assist: true, ship: 'trident' };
     let shots = 0;
     for (let seed = 1; seed <= 4 && shots === 0; seed++) {
       const w = new World(soloWorldSetup({ ...setup, seed }, 'You'));

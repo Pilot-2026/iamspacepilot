@@ -9,7 +9,7 @@ import { World } from '../src/core/world';
 import { Firestore, decodeFields, encodeFields, type Doc } from '../server/firestore';
 import { handleHealth, handleLeaderboard, handleScore, type Store } from '../server/handlers';
 
-const setup: SoloSetup = { level: 'cloud-sea', seed: 4242, bots: 3, difficulty: 'pilot', assist: true };
+const setup: SoloSetup = { level: 'cloud-sea', seed: 4242, bots: 3, difficulty: 'pilot', assist: true, ship: 'trident' };
 
 /** Plays a solo round like the game does: quantize, record, step, until the player is done. */
 function play(s: SoloSetup) {

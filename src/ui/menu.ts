@@ -5,6 +5,8 @@ import { onlineErrorText, type BoardResult } from '../net/api';
 import type { ListResult } from '../net/games';
 import type { OnlineSession } from '../online/session';
 import { LOCAL_TOP, saveProfile, validateCallsign, type Profile, type Quality } from '../storage/profile';
+import { SHIPS, isShip } from '../core/ships';
+import { hangarScreen } from './hangar';
 import { ARROW, esc, frame, ordinal, wordmark } from './html';
 import {
   clampBots,
@@ -44,6 +46,8 @@ export interface MenuHandlers {
   click(): void;
   loadBoard(level: LevelId): Promise<BoardResult>;
   online: OnlineHandlers;
+  /** Hangar: draw turning ships into these canvases (none = stop). */
+  ships(canvases: HTMLCanvasElement[]): void;
 }
 
 export interface OnlineHandlers {
@@ -73,6 +77,7 @@ type Screen =
   | 'connecting'
   | 'lobby'
   | 'online-pause'
+  | 'hangar'
   | 'board'
   | 'pause'
   | 'result'
@@ -109,6 +114,8 @@ export class Menu {
   private onlineCount = -1;
   /** Invite link opened before a callsign was chosen. */
   private pendingJoin = '';
+  /** Where the hangar returns to. */
+  private hangarReturn: Screen = 'main';
 
   constructor(
     private readonly root: HTMLElement,
@@ -126,6 +133,7 @@ export class Menu {
   }
 
   hide(): void {
+    if (this.screen === 'hangar') this.h.ships([]);
     this.root.hidden = true;
   }
 
@@ -136,6 +144,7 @@ export class Menu {
   show(screen: Screen, result?: ResultInfo): void {
     if (result) this.result = result;
     if (screen !== 'online') this.stopList();
+    if (this.screen === 'hangar' && screen !== 'hangar') this.h.ships([]);
     this.screen = screen;
     this.root.hidden = false;
     this.root.innerHTML = this.render(screen);
@@ -146,6 +155,7 @@ export class Menu {
     first?.focus({ preventScroll: true });
     if (screen === 'board') this.loadBoard();
     if (screen === 'online') this.startList();
+    if (screen === 'hangar') this.h.ships(Array.from(this.root.querySelectorAll<HTMLCanvasElement>('canvas[data-ship]')));
     if (screen === 'main') this.loadCount();
   }
 
@@ -382,6 +392,22 @@ export class Menu {
       case 'host-setup':
         this.show('host');
         break;
+      case 'hangar':
+        this.hangarReturn = this.screen === 'hangar' ? this.hangarReturn : this.screen;
+        this.show('hangar');
+        break;
+      case 'pick-ship': {
+        if (!isShip(val)) break;
+        p.ship = val;
+        this.save();
+        this.h.online.session()?.match.setShip(val);
+        const top = this.root.scrollTop;
+        this.root.innerHTML = this.render('hangar');
+        this.root.scrollTop = top;
+        (this.root.querySelector(`[data-act="pick-ship"][data-val="${val}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
+        this.h.ships(Array.from(this.root.querySelectorAll<HTMLCanvasElement>('canvas[data-ship]')));
+        break;
+      }
       case 'o-level':
         p.online.level = val as LevelId;
         this.refreshHost();
@@ -674,6 +700,9 @@ export class Menu {
         const sess = this.h.online.session();
         return sess ? onlinePauseScreen(sess) : listScreen('');
       }
+      case 'hangar':
+        this.back = this.hangarReturn;
+        return hangarScreen(this.profile.ship);
       case 'board':
         return this.boardScreen();
       case 'pause':
@@ -717,12 +746,13 @@ export class Menu {
       <p class="m-kicker">Welcome back, ${name}</p>
       <nav class="m-list" aria-label="Main menu">
         <button class="mi" data-act="go" data-val="solo">Solo flight ${ARROW}</button>
+        <button class="mi" data-act="hangar">Hangar <span class="tag">${esc(SHIPS[this.profile.ship].name)}</span></button>
         <button class="mi wio" data-act="go" data-val="online">who is online? <span class="tag" id="wio-count"${this.onlineCount > 0 ? '' : ' hidden'}>${this.onlineCount > 0 ? `${this.onlineCount} online` : ''}</span></button>
         <button class="mi" data-act="go" data-val="board">Leaderboard ${ARROW}</button>
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span>v0.5 · Solo and online</span><span>Fly free. Leave light behind.</span>`,
+      `<span>v0.6 · Four ships</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
@@ -756,6 +786,7 @@ export class Menu {
           </div>
         </div>
         <div class="m-row"><span class="lbl">Difficulty</span><div class="seg">${diffButtons}</div></div>
+        <div class="m-row"><span class="lbl">Ship</span><div class="seg"><button data-act="hangar" aria-pressed="true">${esc(SHIPS[this.profile.ship].name)} · change</button></div></div>
       </div>
       <p class="m-hint">${record} Win a level to open the next one (${open} of ${LEVEL_ORDER.length} open).</p>
       <div class="m-list">
@@ -772,7 +803,8 @@ export class Menu {
       <h2 class="m-title">Stay in the air. Make them hit your wall.</h2>
       <p class="m-text">Your glider leaves a wall of light. Every wall is deadly, yours too. So are the arena shield and the floor below. The shield closes in after 30 seconds. The last pilot flying wins.</p>
       <p class="m-text">The wall turns with your glider. Fly level and it stands upright. Roll 90° and it lies flat like a floor. Keep rolling and it twists into a spiral. Fly close along a wall to recharge your boost.</p>
-      <p class="m-text">Your gun fires shots that fly straight through walls and only hit other gliders. They curve a little towards a glider in front of them. Three hits bring a glider down, a ring repairs one hit. Hold the trigger too long and the gun overheats.</p>
+      <p class="m-text">Your gun fires shots that fly straight through walls and only hit other ships. They curve a little towards a ship in front of them. Three hits bring a ship down (the Bulwark takes five). Hold the trigger too long and the gun overheats.</p>
+      <p class="m-text">Every ship has a special ability on <kbd>C</kbd> that recharges after use. Bonus rings give boost and the bonus they show: triple shot, big wall, shield, cool gun, turbo, seeker shots or a repair.</p>
       <div class="keys-wrap">
         <table class="keys">
           <thead><tr><th>Action</th><th>Keyboard</th><th>Gamepad</th><th>Touch</th></tr></thead>
@@ -782,6 +814,7 @@ export class Menu {
             <tr><td>Roll</td><td><kbd>Q</kbd> <kbd>E</kbd></td><td>LB, RB</td><td>Roll buttons</td></tr>
             <tr><td>Fire</td><td><kbd>Space</kbd> or left click</td><td>LT or X</td><td>Fire button</td></tr>
             <tr><td>Boost</td><td><kbd>⌘ Command</kbd> or <kbd>Shift</kbd></td><td>RT or A</td><td>Boost button</td></tr>
+            <tr><td>Special ability</td><td><kbd>C</kbd></td><td>B</td><td>Special button</td></tr>
             <tr><td>Talk (online)</td><td>Hold <kbd>R</kbd></td><td>Y or d-pad up</td><td>Mic button</td></tr>
             <tr><td>Pause</td><td><kbd>Esc</kbd> or <kbd>P</kbd></td><td>Start</td><td>II button</td></tr>
           </tbody>

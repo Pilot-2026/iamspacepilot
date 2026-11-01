@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AXIS_FWD, Quat, V3, dcos, dsin } from '../src/core/math';
-import { Trail, quadCorners, segQuad, segSegDistSq } from '../src/core/trail';
+import { TAPER_MIN, TAPER_TICKS, WALL_HALF } from '../src/core/config';
+import { Trail, halfAt, quadCorners, segQuad, segSegDistSq } from '../src/core/trail';
 import { World, type PilotSetup, type WorldSetup } from '../src/core/world';
 import type { PilotInput } from '../src/core/types';
 
@@ -44,17 +45,30 @@ describe('deterministic math', () => {
 
 describe('wall geometry', () => {
   const tr = new Trail();
-  tr.add(new V3(0, 0, 0), new V3(0, 1, 0), 0);
-  tr.add(new V3(0, 0, 10), new V3(0, 1, 0), 3);
+  tr.add(new V3(0, 0, 0), new V3(0, 1, 0), 0, WALL_HALF);
+  tr.add(new V3(0, 0, 10), new V3(0, 1, 0), 3, WALL_HALF);
   const c = new Float64Array(12);
-  quadCorners(tr, 0, c);
+  quadCorners(tr, 0, c, 100);
 
   it('hits a segment that crosses the wall', () => {
     expect(segQuad(-1, 0, 5, 2, 0, 0, c)).toBeCloseTo(0.5);
   });
 
   it('misses a segment that passes above the wall', () => {
-    expect(segQuad(-1, 5, 5, 2, 0, 0, c)).toBe(-1);
+    expect(segQuad(-1, WALL_HALF + 1, 5, 2, 0, 0, c)).toBe(-1);
+  });
+
+  it('is twice as high as before and starts narrow behind the ship', () => {
+    expect(WALL_HALF).toBe(4);
+    // Brand new: only a sliver of the full height.
+    expect(halfAt(tr, 1, 3)).toBeCloseTo(WALL_HALF * TAPER_MIN);
+    expect(halfAt(tr, 1, 3 + TAPER_TICKS / 2)).toBeGreaterThan(WALL_HALF * 0.5);
+    expect(halfAt(tr, 1, 3 + TAPER_TICKS)).toBe(WALL_HALF);
+    // A path 3 m above the centre passes over a new wall piece but hits the grown one.
+    quadCorners(tr, 0, c, 3);
+    expect(segQuad(-1, 3, 9.9, 2, 0, 0, c)).toBe(-1);
+    quadCorners(tr, 0, c, 100);
+    expect(segQuad(-1, 3, 9.9, 2, 0, 0, c)).toBeGreaterThan(0);
   });
 
   it('measures the distance between two segments', () => {

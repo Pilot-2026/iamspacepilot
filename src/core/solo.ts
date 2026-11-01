@@ -1,4 +1,5 @@
 import { COUNTDOWN_TICKS, TICK_RATE } from './config';
+import { botShip, type ShipId } from './ships';
 import type { Difficulty, LevelId, PilotInput } from './types';
 import { World, type WorldSetup } from './world';
 
@@ -12,12 +13,14 @@ export interface SoloSetup {
   difficulty: Difficulty;
   /** The player's auto-horizon setting. */
   assist: boolean;
+  /** The player's ship. */
+  ship: ShipId;
 }
 
 export function soloWorldSetup(s: SoloSetup, callsign: string): WorldSetup {
-  const pilots: WorldSetup['pilots'] = [{ name: callsign, isBot: false, assist: s.assist, skill: s.difficulty }];
+  const pilots: WorldSetup['pilots'] = [{ name: callsign, isBot: false, assist: s.assist, skill: s.difficulty, ship: s.ship }];
   for (let i = 0; i < s.bots; i++) {
-    pilots.push({ name: BOT_NAMES[i % BOT_NAMES.length], isBot: true, assist: true, skill: s.difficulty });
+    pilots.push({ name: BOT_NAMES[i % BOT_NAMES.length], isBot: true, assist: true, skill: s.difficulty, ship: botShip(s.seed, i) });
   }
   return { level: s.level, seed: s.seed, pilots };
 }

@@ -1,3 +1,4 @@
+import type { ShipId } from '../core/ships';
 import type { CrashInfo } from '../core/types';
 import type { World } from '../core/world';
 import { hostGame, joinGame, updateGame, type Ticket } from '../net/games';
@@ -22,6 +23,7 @@ export interface SessionEvents {
 export interface LobbyPilot extends RadioEntry {
   host: boolean;
   wins: number;
+  ship: ShipId;
 }
 
 export type OpenResult = { ok: true; session: OnlineSession } | { ok: false; error: string };
@@ -94,7 +96,7 @@ export class OnlineSession {
       bots: t.meta.bots,
       difficulty: code ? 'pilot' : o.difficulty,
     };
-    s.match = new OnlineMatch(s.link, { name: profile.callsign, assist: profile.settings.autoHorizon }, settings, {
+    s.match = new OnlineMatch(s.link, { name: profile.callsign, assist: profile.settings.autoHorizon, ship: profile.ship }, settings, {
       onLobby: () => s.lobbyChanged(),
       onRoundStart: (w, local) => {
         s.lastResult = null;
@@ -146,7 +148,7 @@ export class OnlineSession {
     const order = new Map(this.link.peers().map((p) => [p.identity, p.joinedAt]));
     return this.link
       .radio()
-      .map((r) => ({ ...r, host: r.identity === host, wins: this.wins.get(r.identity) ?? 0 }))
+      .map((r) => ({ ...r, host: r.identity === host, wins: this.wins.get(r.identity) ?? 0, ship: this.match.shipOf(r.identity) }))
       .sort((a, b) => (order.get(a.identity) ?? 0) - (order.get(b.identity) ?? 0) || a.identity.localeCompare(b.identity));
   }
 

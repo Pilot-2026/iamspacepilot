@@ -1,5 +1,7 @@
 import { CORE_VERSION, MAX_ONLINE_PILOTS, NET_PROTOCOL } from '../core/config';
 import { LEVELS } from '../core/levels';
+import { isPower, type PowerId } from '../core/powerups';
+import { SHIP_ORDER, isShip, type ShipId, type SpecialKind } from '../core/ships';
 import { BOT_NAMES } from '../core/solo';
 import type { CrashInfo, CrashKind, Difficulty, LevelId, PilotInput } from '../core/types';
 import { World, type WorldSetup } from '../core/world';
@@ -27,19 +29,28 @@ export interface NetPilot {
   name: string;
   bot: boolean;
   team: number;
+  ship: ShipId;
 }
 
+const SPECIALS: readonly SpecialKind[] = ['burst', 'afterburner', 'phase', 'shockwave'];
+
 export type Msg =
-  | { t: 'hello'; v: string; name: string }
+  | { t: 'hello'; v: string; name: string; ship: ShipId }
+  /** A pilot picked another ship for the next round. */
+  | { t: 'pick'; ship: ShipId }
   /** nextIn: milliseconds until the host starts the next round, 0 if not planned. */
   | { t: 'lobby'; level: LevelId; mode: Mode; bots: number; difficulty: Difficulty; round: number; flying: boolean; nextIn: number }
   | { t: 'start'; round: number; level: LevelId; mode: Mode; seed: number; difficulty: Difficulty; pilots: NetPilot[] }
   | { t: 's'; r: number; g: number[]; w: number[] }
   | { t: 'c'; r: number; id: number; k: CrashKind; by: number }
-  /** Glider id fired shot k from p in direction d. */
-  | { t: 'f'; r: number; id: number; k: number; p: number[]; d: number[] }
-  /** Shot k of glider by hit glider id, which has hull hits left. */
-  | { t: 'h'; r: number; id: number; by: number; k: number; hull: number }
+  /** Glider id fired shot k from p in direction d; s = 1 for a seeker shot. */
+  | { t: 'f'; r: number; id: number; k: number; p: number[]; d: number[]; s: number }
+  /** Shot k of glider by hit glider id, which has hull hits left; sh = 1 when its shield took it. */
+  | { t: 'h'; r: number; id: number; by: number; k: number; hull: number; sh: number }
+  /** Glider id used its special at p. */
+  | { t: 'x'; r: number; id: number; k: SpecialKind; p: number[] }
+  /** Glider id flew through ring k (placed for the n-th time) and got power-up pw. */
+  | { t: 'g'; r: number; id: number; k: number; n: number; pw: PowerId }
   | { t: 'end'; r: number; winner: number; team: number; places: number[] };
 
 export interface Peer {
@@ -102,13 +113,15 @@ export class OnlineMatch {
   /** When the host starts the next round (ms on the local clock), 0 if not planned. */
   nextRoundAt = 0;
   private owned = new Set<number>();
+  /** Ships the other pilots picked (host uses them for the next round). */
+  private readonly ships = new Map<string, ShipId>();
   private sent = new Map<number, number>();
   private ticks = 0;
   private endSent = false;
 
   constructor(
     private readonly t: Transport,
-    private readonly me: { name: string; assist: boolean },
+    private readonly me: { name: string; assist: boolean; ship: ShipId },
     settings: MatchSettings,
     private readonly cb: MatchCallbacks,
     private readonly clock: () => number = () => performance.now(),
@@ -139,7 +152,7 @@ export class OnlineMatch {
   /** Call once after connecting. */
   start(): void {
     this.electHost();
-    this.t.send({ t: 'hello', v: GAME_VERSION, name: this.me.name });
+    this.t.send({ t: 'hello', v: GAME_VERSION, name: this.me.name, ship: this.me.ship });
     if (this.isHost) this.broadcastLobby();
     this.cb.onLobby();
   }
@@ -186,6 +199,23 @@ export class OnlineMatch {
     this.broadcastLobby();
   }
 
+  /** This pilot's ship for the next round. */
+  get ship(): ShipId {
+    return this.me.ship;
+  }
+
+  /** Picks a ship for the next round and tells the others. */
+  setShip(ship: ShipId): void {
+    this.me.ship = ship;
+    this.t.send({ t: 'pick', ship });
+    this.cb.onLobby();
+  }
+
+  /** Ship a pilot picked for the next round, as far as this device knows. */
+  shipOf(identity: string): ShipId {
+    return identity === this.t.self ? this.me.ship : (this.ships.get(identity) ?? 'trident');
+  }
+
   /** Host: change level, mode, bots or difficulty for the next round. */
   setSettings(patch: Partial<MatchSettings>): void {
     if (!this.isHost) return;
@@ -215,9 +245,18 @@ export class OnlineMatch {
       .slice()
       .sort((a, b) => a.joinedAt - b.joinedAt || a.identity.localeCompare(b.identity))
       .slice(0, MAX_PILOTS);
-    const pilots: NetPilot[] = humans.map((p) => ({ identity: p.identity, name: p.name, bot: false, team: -1 }));
+    const pilots: NetPilot[] = humans.map((p) => ({
+      identity: p.identity,
+      name: p.name,
+      bot: false,
+      team: -1,
+      ship: p.identity === this.t.self ? this.me.ship : (this.ships.get(p.identity) ?? 'trident'),
+    }));
     const bots = Math.max(0, Math.min(s.bots, MAX_PILOTS - pilots.length));
-    for (let i = 0; i < bots; i++) pilots.push({ identity: `bot-${i}`, name: BOT_NAMES[i % BOT_NAMES.length], bot: true, team: -1 });
+    for (let i = 0; i < bots; i++) {
+      const ship = SHIP_ORDER[Math.floor(Math.random() * SHIP_ORDER.length)];
+      pilots.push({ identity: `bot-${i}`, name: BOT_NAMES[i % BOT_NAMES.length], bot: true, team: -1, ship });
+    }
     if (s.mode === 'teams') pilots.forEach((p, i) => (p.team = i % 2));
     const msg: Extract<Msg, { t: 'start' }> = {
       t: 'start',
@@ -254,6 +293,7 @@ export class OnlineMatch {
         skill: m.difficulty,
         remote: p.bot ? !host : i !== this.local,
         team: p.team,
+        ship: isShip(p.ship) ? p.ship : 'trident',
       })),
     };
     this.world = new World(setup);
@@ -277,10 +317,23 @@ export class OnlineMatch {
       if (e.type === 'shot' && this.owned.has(e.id)) {
         const shot = w.shots.find((x) => x.key === e.shot);
         if (shot) {
-          this.t.send({ t: 'f', r: this.round, id: e.id, k: e.shot, p: [r3(shot.p.x), r3(shot.p.y), r3(shot.p.z)], d: [r4(shot.d.x), r4(shot.d.y), r4(shot.d.z)] });
+          this.t.send({
+            t: 'f',
+            r: this.round,
+            id: e.id,
+            k: e.shot,
+            p: [r3(shot.p.x), r3(shot.p.y), r3(shot.p.z)],
+            d: [r4(shot.d.x), r4(shot.d.y), r4(shot.d.z)],
+            s: shot.seek ? 1 : 0,
+          });
         }
       } else if (e.type === 'hit' && this.owned.has(e.id)) {
-        this.t.send({ t: 'h', r: this.round, id: e.id, by: e.by, k: e.shot, hull: e.hull });
+        this.t.send({ t: 'h', r: this.round, id: e.id, by: e.by, k: e.shot, hull: e.hull, sh: e.shield ? 1 : 0 });
+      } else if (e.type === 'special' && this.owned.has(e.id)) {
+        const g = w.gliders[e.id];
+        this.t.send({ t: 'x', r: this.round, id: e.id, k: e.kind, p: [r3(g.p.x), r3(g.p.y), r3(g.p.z)] });
+      } else if (e.type === 'power' && this.owned.has(e.id)) {
+        this.t.send({ t: 'g', r: this.round, id: e.id, k: e.ring, n: e.n, pw: e.power });
       } else if (e.type === 'crash') {
         if (this.owned.has(e.id)) this.t.send({ t: 'c', r: this.round, id: e.id, k: e.crash.kind, by: e.crash.by });
         this.cb.onCrash(e.id, e.crash);
@@ -323,7 +376,7 @@ export class OnlineMatch {
       const from = this.sent.get(id) ?? 0;
       if (tr.count > from) {
         wl.push(id, from, tr.count - from);
-        for (let k = from; k < tr.count; k++) wl.push(r3(tr.px[k]), r3(tr.py[k]), r3(tr.pz[k]), r3(tr.ux[k]), r3(tr.uy[k]), r3(tr.uz[k]));
+        for (let k = from; k < tr.count; k++) wl.push(r3(tr.px[k]), r3(tr.py[k]), r3(tr.pz[k]), r3(tr.ux[k]), r3(tr.uy[k]), r3(tr.uz[k]), r2(tr.h[k]));
         this.sent.set(id, tr.count);
       }
     }
@@ -358,6 +411,9 @@ export class OnlineMatch {
     switch (m.t) {
       case 'hello':
         if (m.v !== GAME_VERSION) this.cb.onVersionMismatch(m.name);
+        if (isShip(m.ship)) this.ships.set(from, m.ship);
+        // Tell the newcomer which ship this pilot flies.
+        this.t.send({ t: 'pick', ship: this.me.ship });
         if (this.isHost) this.broadcastLobby();
         this.cb.onLobby();
         break;
@@ -401,9 +457,9 @@ export class OnlineMatch {
           const start = m.w[o + 1];
           const n = m.w[o + 2];
           if (!(n > 0)) break;
-          const data = m.w.slice(o + 3, o + 3 + n * 6);
+          const data = m.w.slice(o + 3, o + 3 + n * 7);
           if (!this.owned.has(id) && this.ownerOf(id) === from) w.addRemoteSamples(id, start, data);
-          o += 3 + n * 6;
+          o += 3 + n * 7;
         }
         break;
       }
@@ -420,18 +476,38 @@ export class OnlineMatch {
         }
         break;
       }
+      case 'pick':
+        if (isShip(m.ship) && this.ships.get(from) !== m.ship) {
+          this.ships.set(from, m.ship);
+          this.cb.onLobby();
+        }
+        break;
+      case 'x': {
+        const w = this.world;
+        if (!w || m.r !== this.round || this.owned.has(m.id) || this.ownerOf(m.id) !== from) return;
+        if (!SPECIALS.includes(m.k) || !finiteList(m.p) || m.p.length !== 3) return;
+        w.remoteSpecial(m.id, m.k, m.p[0], m.p[1], m.p[2]);
+        break;
+      }
+      case 'g': {
+        const w = this.world;
+        if (!w || m.r !== this.round || this.owned.has(m.id) || this.ownerOf(m.id) !== from) return;
+        if (!Number.isInteger(m.k) || !Number.isInteger(m.n) || !isPower(m.pw)) return;
+        w.remoteRing(m.id, m.k, m.n, m.pw);
+        break;
+      }
       case 'f': {
         const w = this.world;
         if (!w || m.r !== this.round || this.owned.has(m.id) || this.ownerOf(m.id) !== from) return;
         if (!finiteList(m.p) || !finiteList(m.d) || m.p.length !== 3 || m.d.length !== 3 || !Number.isInteger(m.k)) return;
-        w.addRemoteShot(m.id, m.k, m.p[0], m.p[1], m.p[2], m.d[0], m.d[1], m.d[2]);
+        w.addRemoteShot(m.id, m.k, m.p[0], m.p[1], m.p[2], m.d[0], m.d[1], m.d[2], m.s === 1);
         break;
       }
       case 'h': {
         const w = this.world;
         if (!w || m.r !== this.round || this.owned.has(m.id) || this.ownerOf(m.id) !== from) return;
         if (!Number.isInteger(m.by) || !Number.isInteger(m.k) || !Number.isFinite(m.hull)) return;
-        w.remoteHit(m.id, m.by, m.k, m.hull);
+        w.remoteHit(m.id, m.by, m.k, m.hull, m.sh === 1);
         break;
       }
       case 'end':
