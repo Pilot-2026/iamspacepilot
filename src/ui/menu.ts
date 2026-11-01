@@ -709,7 +709,11 @@ export class Menu {
     this.back = null;
     const name = esc(this.profile.callsign || 'pilot');
     return frame(
-      `${wordmark()}
+      `<header class="m-hero">
+        ${wordmark()}
+        <p class="m-tagline">Up here, every pilot leaves a line of light behind. Some last a heartbeat, some last forever. Fly brave, fly free – the sky remembers you.</p>
+        <p class="m-credit">A game by Andreas Schmoelzer<br>entirely made with AI</p>
+      </header>
       <p class="m-kicker">Welcome back, ${name}</p>
       <nav class="m-list" aria-label="Main menu">
         <button class="mi" data-act="go" data-val="solo">Solo flight ${ARROW}</button>
@@ -773,12 +777,12 @@ export class Menu {
         <table class="keys">
           <thead><tr><th>Action</th><th>Keyboard</th><th>Gamepad</th><th>Touch</th></tr></thead>
           <tbody>
-            <tr><td>Turn</td><td><kbd>A</kbd> <kbd>D</kbd> or <kbd>←</kbd> <kbd>→</kbd></td><td>Left stick</td><td>Left thumb stick</td></tr>
-            <tr><td>Nose up, down</td><td><kbd>W</kbd> <kbd>S</kbd> or <kbd>↑</kbd> <kbd>↓</kbd></td><td>Left stick</td><td>Left thumb stick</td></tr>
+            <tr><td>Turn</td><td><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd></td><td>Left stick</td><td>Left thumb stick</td></tr>
+            <tr><td>Nose down, up (flight mode)</td><td><kbd>↑</kbd> <kbd>↓</kbd> or <kbd>W</kbd> <kbd>S</kbd></td><td>Left stick</td><td>Left thumb stick</td></tr>
             <tr><td>Roll</td><td><kbd>Q</kbd> <kbd>E</kbd></td><td>LB, RB</td><td>Roll buttons</td></tr>
-            <tr><td>Boost</td><td><kbd>Space</kbd></td><td>RT or A</td><td>Boost button</td></tr>
-            <tr><td>Fire</td><td><kbd>F</kbd> or left click</td><td>LT or X</td><td>Fire button</td></tr>
-            <tr><td>Talk (online)</td><td>Hold <kbd>T</kbd></td><td>Y or d-pad up</td><td>Mic button</td></tr>
+            <tr><td>Fire</td><td><kbd>Space</kbd> or left click</td><td>LT or X</td><td>Fire button</td></tr>
+            <tr><td>Boost</td><td><kbd>⌘ Command</kbd> or <kbd>Shift</kbd></td><td>RT or A</td><td>Boost button</td></tr>
+            <tr><td>Talk (online)</td><td>Hold <kbd>R</kbd></td><td>Y or d-pad up</td><td>Mic button</td></tr>
             <tr><td>Pause</td><td><kbd>Esc</kbd> or <kbd>P</kbd></td><td>Start</td><td>II button</td></tr>
           </tbody>
         </table>
@@ -800,11 +804,11 @@ export class Menu {
           <div class="seg"><button data-act="rename" aria-pressed="false">${esc(this.profile.callsign || 'Set callsign')}</button></div></div>
         <div class="m-row"><label for="volume">Sound</label>
           <input id="volume" class="m-range" type="range" min="0" max="100" step="5" value="${Math.round(s.volume * 100)}"></div>
-        <div class="m-row"><span class="lbl">Invert pitch</span>${seg('invert', [['off', 'Off'], ['on', 'On']], s.invertPitch ? 'on' : 'off')}</div>
+        <div class="m-row"><span class="lbl">Flight mode</span>${seg('invert', [['on', 'On: ↑ nose down'], ['off', 'Off: ↑ nose up']], s.invertPitch ? 'on' : 'off')}</div>
         <div class="m-row"><span class="lbl">Auto-horizon</span>${seg('assist', [['off', 'Off'], ['on', 'On']], s.autoHorizon ? 'on' : 'off')}</div>
         <div class="m-row"><span class="lbl">Graphics</span>${seg('quality', [['auto', 'Auto'], ['low', 'Low'], ['high', 'High']], s.quality)}</div>
       </div>
-      <p class="m-hint">Auto-horizon levels your glider slowly when you are not rolling. Invert pitch swaps nose up and down.</p>
+      <p class="m-hint">Flight mode steers like a plane: arrow up (or stick forward) lowers the nose. Auto-horizon levels your ship slowly when you are not rolling.</p>
       <div class="m-list"><button class="mi" data-act="back">Back ${ARROW}</button></div>`,
     );
   }

@@ -109,6 +109,13 @@ class App {
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => this.visibilityChanged());
     window.addEventListener('pagehide', () => this.session?.leave());
+    // Command is boost: Command+W or Command+R during a flight must not close or reload the game by accident.
+    window.addEventListener('beforeunload', (e) => {
+      if (this.state === 'playing' || this.state === 'paused' || this.state === 'ending' || this.session) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
     // Touch can appear on hybrid laptops at any time.
     window.addEventListener('touchstart', () => {
       if (this.state === 'playing' && !this.touch.visible) {
@@ -148,6 +155,8 @@ class App {
   private launch(): void {
     if (!this.view) return;
     this.sound.unlock();
+    // Space fires: it must not press a menu button that still has focus.
+    (document.activeElement as HTMLElement | null)?.blur?.();
     const p = this.profile;
     this.solo = {
       level: p.solo.level,
@@ -557,6 +566,7 @@ class App {
     this.local = local;
     this.solo = null;
     this.final = null;
+    (document.activeElement as HTMLElement | null)?.blur?.();
     view.load(w, local);
     const colors = w.gliders.map((_, i) => view.colorOf(i));
     this.hud.setup(w, colors, local);

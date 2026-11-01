@@ -21,8 +21,11 @@ const dead = (v: number) => (Math.abs(v) < DEAD ? 0 : (v - Math.sign(v) * DEAD) 
  * Keys ramp up smoothly so tapping gives small corrections.
  */
 export class InputManager {
-  invertPitch = false;
-  private readonly keys = new Set<string>();
+  /** Flight mode: arrow up lowers the nose, like in a plane. */
+  invertPitch = true;
+  /** Key code -> when its last keydown arrived and whether it was a repeat. */
+  private readonly keys = new Map<string, { at: number; repeat: boolean }>();
+  private metaHeld = false;
   private kx = 0;
   private ky = 0;
   private kr = 0;
@@ -49,12 +52,24 @@ export class InputManager {
         if (countTap(this.cheatTaps)) this.onCheat();
         return;
       }
-      if (this.capturing && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-      this.keys.add(e.code);
+      if (e.code === 'MetaLeft' || e.code === 'MetaRight') this.metaHeld = true;
+      if (this.capturing) {
+        // While flying, keys must not scroll the page or trigger browser shortcuts (Command is boost).
+        if (e.metaKey || e.ctrlKey || ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code)) e.preventDefault();
+      }
+      this.keys.set(e.code, { at: performance.now(), repeat: e.repeat });
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('keyup', (e) => {
+      this.keys.delete(e.code);
+      if (e.code === 'MetaLeft' || e.code === 'MetaRight') {
+        // On a Mac the browser does not report keys let go while Command was held: forget them.
+        this.metaHeld = false;
+        for (const code of [...this.keys.keys()]) if (!/^(Shift|Alt|Control|Meta)/.test(code)) this.keys.delete(code);
+      }
+    });
     window.addEventListener('blur', () => {
       this.keys.clear();
+      this.metaHeld = false;
       this.mouseFire = false;
     });
     // Mouse: hold the left button on the 3D view to fire.
@@ -71,22 +86,30 @@ export class InputManager {
 
   reset(): void {
     this.keys.clear();
+    this.metaHeld = false;
     this.mouseFire = false;
     this.kx = 0;
     this.ky = 0;
     this.kr = 0;
   }
 
-  /** Push to talk: T, or Y / d-pad up on a gamepad. */
+  /** Push to talk: R, or Y / d-pad up on a gamepad. */
   talkHeld(): boolean {
-    if (this.keys.has('KeyT')) return true;
+    if (this.key('KeyR')) return true;
     const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
     for (const pad of pads) if (pad && (pad.buttons[3]?.pressed || pad.buttons[12]?.pressed)) return true;
     return false;
   }
 
   private key(...codes: string[]): boolean {
-    for (const c of codes) if (this.keys.has(c)) return true;
+    const now = performance.now();
+    for (const c of codes) {
+      const k = this.keys.get(c);
+      if (!k) continue;
+      // While Command is held, a key counts as held only while it keeps repeating.
+      if (this.metaHeld && !c.startsWith('Meta') && now - k.at > (k.repeat ? 220 : 650)) continue;
+      return true;
+    }
     return false;
   }
 
@@ -130,8 +153,10 @@ export class InputManager {
     this.out.steerX = clamp(this.kx + px + t.steerX, -1, 1);
     this.out.steerY = this.invertPitch ? -sy : sy;
     this.out.roll = clamp(this.kr + pr + t.roll, -1, 1);
-    this.out.boost = this.key('Space') || pb || t.boost;
-    this.out.fire = this.key('KeyF', 'ControlRight', 'ShiftRight') || this.mouseFire || pf || t.fire;
+    // Boost: Command (Mac), or Shift on any keyboard.
+    this.out.boost = this.key('MetaLeft', 'MetaRight', 'ShiftLeft', 'ShiftRight') || pb || t.boost;
+    // Fire: Space, F or the left mouse button.
+    this.out.fire = this.key('Space', 'KeyF') || this.mouseFire || pf || t.fire;
     return this.out;
   }
 }

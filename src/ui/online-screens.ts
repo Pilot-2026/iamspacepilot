@@ -131,7 +131,7 @@ export function consentScreen(): string {
     <h2 class="m-title">You are on the radio</h2>
     <p class="m-text">Every online game has live voice radio. All pilots in the game hear you while you talk, also pilots you do not know.</p>
     <ul class="m-points">
-      <li>Hold <kbd>T</kbd> to talk, or <kbd>Y</kbd> on a gamepad. On a touch screen, tap the mic button.</li>
+      <li>Hold <kbd>R</kbd> to talk, or <kbd>Y</kbd> on a gamepad. On a touch screen, tap the mic button.</li>
       <li>Mute any pilot with one tap. Only you stop hearing them.</li>
       <li>Be fair: no insults, no hate, no personal details.</li>
       <li>The radio is not recorded.</li>
@@ -225,7 +225,7 @@ export function micLine(s: OnlineSession, touch: boolean): string {
   if (s.micProblem) return 'No microphone found. You can still hear everyone.';
   if (s.audioBlocked) return 'Tap anywhere to hear the radio.';
   if (touch) return 'Tap Talk to open your mic, tap again to close it.';
-  return 'Hold T to talk (Y on a gamepad), or use the Talk button.';
+  return 'Hold R to talk (Y on a gamepad), or use the Talk button.';
 }
 
 export function lobbyScreen(s: OnlineSession, prefs: OnlinePrefs, touch: boolean): string {
