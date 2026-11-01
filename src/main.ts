@@ -22,10 +22,11 @@ import { gameErrorText, listGames } from './net/games';
 import type { RoundResult } from './online/match';
 import { OnlineSession, type SessionEvents } from './online/session';
 import { ShipPreviews } from './render/preview';
+import { MenuStage } from './render/stage';
 import { GameView } from './render/view';
 import { addLocalScore, loadProfile, saveProfile, type Profile } from './storage/profile';
 import { Hud } from './ui/hud';
-import { Menu, formatScore, type ResultInfo } from './ui/menu';
+import { Menu, formatScore, type MenuScreen, type ResultInfo } from './ui/menu';
 import { TEAM_NAMES } from './ui/online-screens';
 import { TouchControls } from './ui/touch';
 
@@ -47,6 +48,12 @@ class App {
   private trackToast: HTMLElement | null = null;
   private toastTimer = 0;
   private previews: ShipPreviews | null = null;
+  /** Ships flying behind the menus, and the intro. */
+  private stage: MenuStage | null = null;
+  /** Start screen: which level world shines through, and for how long already. */
+  private showLevel = 0;
+  private showTime = 0;
+  private showAcc = 0;
   private world: World | null = null;
   private state: State = 'menu';
   private acc = 0;
@@ -95,6 +102,7 @@ class App {
         this.sound.click();
       },
       loadBoard: (level) => fetchBoard(level),
+      screen: (screen) => this.menuScreen(screen),
       ships: (canvases) => {
         if (!canvases.length && !this.previews) return;
         this.previews ??= new ShipPreviews();
@@ -141,12 +149,25 @@ class App {
 
     this.applySettings();
     this.resize();
-    if (!this.view) this.menu.show('nogl');
-    else this.menu.show(this.profile.callsign ? 'main' : 'callsign');
-    // An invite link (?join=CODE) opens that game straight away.
+    // An invite link (?join=CODE) opens that game straight away (after the intro).
     const code = new URLSearchParams(location.search).get('join')?.toUpperCase() ?? '';
     if (code) history.replaceState(null, '', location.pathname);
-    if (this.view && /^[A-Z0-9]{5}$/.test(code)) this.menu.joinFromLink(code);
+    if (!this.view) {
+      this.menu.show('nogl');
+    } else {
+      try {
+        this.stage = new MenuStage($('stage') as HTMLCanvasElement);
+      } catch {
+        this.stage = null;
+      }
+      this.showLevel = Math.floor(Math.random() * LEVEL_ORDER.length);
+      this.sound.playMusic('intro');
+      this.menu.showIntro(() => {
+        this.sound.playMusic('menu');
+        this.menu.show(this.profile.callsign ? 'main' : 'callsign');
+        if (/^[A-Z0-9]{5}$/.test(code)) this.menu.joinFromLink(code);
+      });
+    }
     requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -208,6 +229,37 @@ class App {
     this.sound.playMusic(this.world.spec.id);
     this.goFullscreen();
     this.requestWakeLock();
+  }
+
+  /** Menu screen changed: ship stage behind it, and the worlds behind the start screen. */
+  private menuScreen(screen: MenuScreen | null): void {
+    this.stage?.setMode(screen === 'intro' ? 'intro' : screen ? 'menu' : 'off');
+    const view = this.view;
+    if (!view) return;
+    if (screen === 'main' && this.state === 'menu') {
+      if (!view.showing) {
+        view.showcase(LEVEL_ORDER[this.showLevel % LEVEL_ORDER.length]);
+        this.showTime = 0;
+      }
+    } else if (view.showing) {
+      view.clear();
+    }
+  }
+
+  /** Renders the level world behind the start screen (30 times a second) and moves on to the next level now and then. */
+  private frameShowcase(dt: number): void {
+    const view = this.view;
+    if (!view || !view.showing) return;
+    this.showTime += dt;
+    if (this.showTime > 12) {
+      this.showLevel++;
+      view.showcase(LEVEL_ORDER[this.showLevel % LEVEL_ORDER.length]);
+      this.showTime = 0;
+    }
+    this.showAcc += dt;
+    if (this.showAcc < 1 / 30) return;
+    view.renderShowcase(this.showAcc);
+    this.showAcc = 0;
   }
 
   // ---- music ----
@@ -340,6 +392,7 @@ class App {
     this.last = now;
     if (this.menu.visible) this.menu.pollGamepad();
     this.updateMusicMood();
+    if (this.state === 'menu') this.frameShowcase(dt);
     if (this.session) {
       this.frameOnline(now, dt);
       return;

@@ -3,7 +3,8 @@ import { TAIL_OFFSET, TAPER_MIN, TICK_RATE, WALL_HALF } from '../core/config';
 import type { SimEvent } from '../core/types';
 import { BIG_WALL, POWERS, type PowerId } from '../core/powerups';
 import { SHOCKWAVE_RADIUS } from '../core/ships';
-import { RING_RADIUS, type World } from '../core/world';
+import type { LevelId } from '../core/types';
+import { RING_RADIUS, World } from '../core/world';
 import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { createLevelEnv, type LevelEnv } from './levels';
 import { RibbonView } from './ribbon';
@@ -105,6 +106,10 @@ export class GameView {
   private readonly sun = new THREE.DirectionalLight(0xffffff, 2);
   private env: LevelEnv | null = null;
   private world: World | null = null;
+  /** Start screen showcase: a world without ships. */
+  private show: { world: World; angle: number } | null = null;
+  /** Pixel ratio for the game; the showcase behind the menu uses less. */
+  private gameRatio = 1;
   private player = 0;
   private pilots: PilotView[] = [];
   private ringViews: THREE.Group[] = [];
@@ -169,7 +174,8 @@ export class GameView {
   }
 
   setPixelRatio(r: number): void {
-    this.renderer.setPixelRatio(r);
+    this.gameRatio = r;
+    if (!this.show) this.renderer.setPixelRatio(r);
   }
 
   resize(w: number, h: number): void {
@@ -186,11 +192,8 @@ export class GameView {
   }
 
   /** Builds the scene for a new round. */
-  load(world: World, player: number): void {
-    this.clear();
-    this.world = world;
-    this.player = player;
-    const env = createLevelEnv(world.spec.id);
+  /** Sky, fog and light of a level. */
+  private useEnv(env: LevelEnv): void {
     this.env = env;
     this.scene.add(env.group);
     this.scene.fog = env.fog;
@@ -201,6 +204,52 @@ export class GameView {
     this.sun.color.setHex(env.sun[0]);
     this.sun.intensity = env.sun[1];
     this.sun.position.copy(env.sun[2]).normalize().multiplyScalar(100);
+  }
+
+  /** Start screen: a slowly turning view of a level's world, shining through the menu. */
+  showcase(level: LevelId): void {
+    this.clear();
+    const env = createLevelEnv(level);
+    env.shield.visible = false;
+    this.useEnv(env);
+    const world = new World({ level, seed: 5, pilots: [{ name: '', isBot: true, assist: true, skill: 'rookie', remote: true }] });
+    this.show = { world, angle: Math.random() * Math.PI * 2 };
+    // Only 5% of it shows through the menu: a lower resolution is plenty.
+    this.renderer.setPixelRatio(0.6);
+  }
+
+  get showing(): boolean {
+    return !!this.show;
+  }
+
+  renderShowcase(dt: number): void {
+    const s = this.show;
+    const env = this.env;
+    if (!s || !env) return;
+    this.time += dt;
+    s.angle += dt * 0.06;
+    s.world.tick = Math.floor(this.time * 60);
+    const R = s.world.spec.arena.radius * 0.55;
+    const a = s.angle;
+    this.camera.position.set(Math.cos(a) * R, 10 + Math.sin(this.time * 0.13) * 6, Math.sin(a) * R);
+    this.camera.up.set(0, 1, 0);
+    this.camera.lookAt(Math.cos(a + 1.3) * R * 2.2, 26, Math.sin(a + 1.3) * R * 2.2);
+    if (this.camera.fov !== 66) {
+      this.camera.fov = 66;
+      this.camera.updateProjectionMatrix();
+    }
+    env.update(s.world, this.time, dt, this.camera);
+    env.dome.position.copy(this.camera.position);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  load(world: World, player: number): void {
+    this.clear();
+    this.renderer.setPixelRatio(this.gameRatio);
+    this.world = world;
+    this.player = player;
+    this.useEnv(createLevelEnv(world.spec.id));
+    const env = this.env as LevelEnv;
 
     const members = [0, 0];
     world.gliders.forEach((g, i) => {
@@ -748,5 +797,6 @@ export class GameView {
       this.env = null;
     }
     this.world = null;
+    this.show = null;
   }
 }

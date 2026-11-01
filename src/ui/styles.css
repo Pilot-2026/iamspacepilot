@@ -61,7 +61,7 @@ body {
   position: absolute;
   inset: 0;
   z-index: 30;
-  background: var(--yellow);
+  background: transparent;
   color: var(--ink);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -1670,5 +1670,152 @@ body.flying .music-toast {
   .music-toast.show {
     animation: none;
     opacity: 1;
+  }
+}
+
+/* ---------- Menu layers: yellow background, ship stage, then the text ---------- */
+
+#menu-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 28;
+  background: var(--yellow);
+}
+
+/* Start screen: 5% see-through, the worlds of the levels shine through. */
+#menu-bg.see-through {
+  background: rgba(255, 230, 0, 0.95);
+}
+
+#menu-bg.intro {
+  background: radial-gradient(ellipse at 50% 58%, #22164f 0%, #0b0720 48%, #030209 100%);
+}
+
+#stage {
+  position: absolute;
+  inset: 0;
+  z-index: 29;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+/* ---------- Intro ---------- */
+
+.intro {
+  position: relative;
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 18px;
+  padding: 24px;
+  overflow: hidden;
+  color: var(--yellow);
+  transition: opacity 0.5s;
+}
+
+.intro.out {
+  opacity: 0;
+}
+
+.intro-words {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.intro-word {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font: 800 4vw/1 var(--f-display);
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgba(255, 230, 0, 0.7);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  animation: wordflash 1.05s ease-out forwards;
+}
+
+@keyframes wordflash {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.35);
+  }
+}
+
+.intro-title {
+  position: relative;
+  font-size: clamp(38px, 9vw, 128px);
+  color: var(--yellow);
+  text-shadow: 0 0 24px rgba(255, 210, 0, 0.45);
+}
+
+.intro-title .w3 {
+  -webkit-text-stroke: 2.5px var(--yellow);
+}
+
+.il {
+  display: inline-block;
+  min-width: 0.3em;
+  transition:
+    transform 0.85s cubic-bezier(0.2, 0.9, 0.25, 1.15),
+    opacity 0.25s;
+}
+
+.il.home {
+  animation: lock 0.5s ease-out 0.75s;
+}
+
+@keyframes lock {
+  0% {
+    text-shadow: 0 0 0 rgba(255, 255, 255, 0);
+  }
+  40% {
+    text-shadow: 0 0 30px #fff;
+  }
+  100% {
+    text-shadow: 0 0 24px rgba(255, 210, 0, 0.45);
+  }
+}
+
+.intro-tag {
+  margin: 0;
+  font: 600 clamp(14px, 1.8vw, 20px) / 1 var(--f-data);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.8s;
+}
+
+.intro.tagged .intro-tag {
+  opacity: 1;
+}
+
+.intro-skip {
+  position: absolute;
+  bottom: calc(18px + var(--safe-b));
+  left: 0;
+  right: 0;
+  margin: 0;
+  text-align: center;
+  font: 500 11px/1 var(--f-data);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 230, 0, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .il,
+  .intro-word {
+    transition: none;
+    animation: none;
   }
 }
