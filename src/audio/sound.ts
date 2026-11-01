@@ -445,6 +445,16 @@ export class Sound {
     src.stop(t + 0.65);
   }
 
+  /** The dachshund spits a bone: a short "wuff". */
+  bark(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    this.tone(560, 0.1, 'sawtooth', 0.07, t, 240);
+    this.tone(300, 0.12, 'square', 0.05, t + 0.01, 150);
+    this.noiseBurst(0.1, 'bandpass', 1400, 500, 0.12, t);
+  }
+
   /** Flying through a waterfall. */
   splash(): void {
     const ctx = this.ctx;

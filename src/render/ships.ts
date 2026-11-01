@@ -527,6 +527,8 @@ export interface ShipMesh {
   /** Engine glow sprites. */
   readonly flames: THREE.Sprite[];
   readonly flame: number;
+  /** Frees geometry that belongs to this model alone. */
+  free?(): void;
 }
 
 /** A ship of the given model; light strips and engines glow in the pilot's colour. */
@@ -555,6 +557,7 @@ export function makeShip(id: ShipId, color: number, glowTexture: THREE.Texture):
 
 /** Frees the materials of a ship (the geometry is shared and stays). */
 export function disposeShip(s: ShipMesh): void {
+  s.free?.();
   for (const m of s.solids) m.dispose();
   s.glowMat.dispose();
   for (const f of s.flames) f.material.dispose();

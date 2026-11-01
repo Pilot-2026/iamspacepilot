@@ -159,6 +159,25 @@ export class Firestore {
     if (r.status !== 200) this.fail(`Writing ${path}`, r);
   }
 
+  /**
+   * Adds to number fields of several documents in one atomic step, creating
+   * them when needed. `set` fields are written as they are, `min` fields keep
+   * the smaller of the stored and the given value.
+   */
+  async increment(updates: { path: string; inc: Record<string, number>; set?: Record<string, unknown>; min?: Record<string, number> }[]): Promise<void> {
+    const prefix = `projects/${this.cfg.projectId}/databases/(default)/documents/`;
+    const writes = updates.map((u) => ({
+      update: { name: prefix + u.path, fields: encodeFields(u.set ?? {}) },
+      updateMask: { fieldPaths: Object.keys(u.set ?? {}) },
+      updateTransforms: [
+        ...Object.entries(u.inc).map(([fieldPath, n]) => ({ fieldPath, increment: { integerValue: String(Math.round(n)) } })),
+        ...Object.entries(u.min ?? {}).map(([fieldPath, n]) => ({ fieldPath, minimum: { integerValue: String(Math.round(n)) } })),
+      ],
+    }));
+    const r = await this.call('POST', `${this.base}:commit`, { writes });
+    if (r.status !== 200) this.fail('Counting', r);
+  }
+
   /** The highest documents of a collection by one number field. */
   async top(collection: string, field: string, limit: number): Promise<Doc[]> {
     const r = await this.call('POST', `${this.base}:runQuery`, {

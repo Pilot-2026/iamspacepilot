@@ -7,6 +7,7 @@ import type { LevelId } from '../core/types';
 import { RING_RADIUS, World } from '../core/world';
 import { Cockpit, COCKPIT_FOV } from './cockpit';
 import { fallColumn, makeObstacleView, type ObstacleView } from './obstacles';
+import { boneGeometry, makeDog, type DogMesh } from './dachshund';
 import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { createLevelEnv, type LevelEnv } from './levels';
 import { RibbonView } from './ribbon';
@@ -75,9 +76,11 @@ interface PilotView {
 }
 
 interface ShotView {
-  core: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>;
+  core: THREE.Mesh<THREE.BufferGeometry, THREE.Material>;
   glow: THREE.Sprite;
   seen: boolean;
+  /** The dachshund spits bones: they tumble end over end. */
+  bone: boolean;
 }
 
 interface BoltView {
@@ -201,6 +204,7 @@ export class GameView {
   private yaw = 0;
   private pitch = 0;
   private cockpit: Cockpit | null = null;
+  private dogMode = false;
   /** The cockpit was drawn last frame. */
   private cockpitOn = false;
   private touchLayout = false;
@@ -354,8 +358,10 @@ export class GameView {
         const list = teamPalette(env.colors, g.team);
         color = list[members[g.team & 1]++ % list.length];
       }
-      const ship = makeShip(g.ship.id, color, sharedTextures().glow);
-      const group = ship.group;
+      const ship = i === player && this.dogMode ? makeDog(color) : makeShip(g.ship.id, color, sharedTextures().glow);
+      // The model sits in its own group, so it can be swapped (cheat: the dachshund).
+      const group = new THREE.Group();
+      group.add(ship.group);
       if (i === player) group.scale.setScalar(1.05);
       const shield = new THREE.Mesh(
         new THREE.IcosahedronGeometry(4.6, 1),
@@ -495,6 +501,27 @@ export class GameView {
     return this.cockpitOn;
   }
 
+  // ---------- the dachshund ----------
+
+  /** Cheat: your glider is a flying dachshund (in every game until switched off). */
+  setDogMode(on: boolean): void {
+    if (on === this.dogMode) return;
+    this.dogMode = on;
+    const pv = this.pilots[this.player];
+    const w = this.world;
+    if (!pv || !w) return;
+    const next = on ? makeDog(pv.color) : makeShip(w.gliders[this.player].ship.id, pv.color, sharedTextures().glow);
+    pv.group.remove(pv.ship.group);
+    disposeShip(pv.ship);
+    pv.group.add(next.group);
+    pv.ship = next;
+    this.spawnBurst(pv.p.x, pv.p.y, pv.p.z, 0xffe14d, 0.35);
+  }
+
+  get dog(): boolean {
+    return this.dogMode;
+  }
+
   /** Remembers the current state so frames between ticks can be interpolated. */
   capturePrev(): void {
     const w = this.world;
@@ -522,6 +549,8 @@ export class GameView {
         this.spawnBurst(g.p.x, g.p.y, g.p.z, e.type === 'shield' ? POWERS.shield.color : 0xffffff, 0.25);
       } else if (e.type === 'bolt-strike') {
         this.flashLevel = 1;
+      } else if (e.type === 'shot' && e.id === this.player && this.dogMode) {
+        (this.pilots[this.player]?.ship as DogMesh | undefined)?.bark?.();
       }
     }
   }
@@ -622,6 +651,8 @@ export class GameView {
       pv.group.position.copy(pv.p);
       pv.group.quaternion.copy(pv.q);
       if (g.alive) this.shipEffects(w, i, dt);
+      const dogMesh = pv.ship as Partial<DogMesh>;
+      if (g.alive && dogMesh.animate) dogMesh.animate(this.time, dt, g.speed, g.boosting);
       if (g.alive) {
         const head = this.tv.copy(FWD).applyQuaternion(pv.q).multiplyScalar(-TAIL_OFFSET).add(pv.p);
         const up = this.tv2.copy(UP).applyQuaternion(pv.q);
@@ -883,6 +914,17 @@ export class GameView {
     for (const s of w.shots) {
       if (!s.alive) continue;
       let v = this.shotViews.get(s.key);
+      if (!v && s.owner === this.player && this.dogMode) {
+        // A bone instead of a shot.
+        const core = new THREE.Mesh(boneGeometry(), new THREE.MeshStandardMaterial({ color: 0xf4ead0, emissive: 0x4a4030, roughness: 0.55 }));
+        const glow = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: sharedTextures().glow, color: 0xfff4d6, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
+        );
+        glow.scale.set(3.2, 3.2, 1);
+        this.scene.add(core, glow);
+        v = { core, glow, seen: true, bone: true };
+        this.shotViews.set(s.key, v);
+      }
       if (!v) {
         const color = this.pilots[s.owner]?.color ?? 0xffffff;
         const core = new THREE.Mesh(
@@ -900,7 +942,7 @@ export class GameView {
         );
         glow.scale.set(4.4, 4.4, 1);
         this.scene.add(core, glow);
-        v = { core, glow, seen: true };
+        v = { core, glow, seen: true, bone: false };
         this.shotViews.set(s.key, v);
       }
       v.seen = true;
@@ -908,6 +950,7 @@ export class GameView {
       v.core.position.copy(p);
       v.glow.position.copy(p);
       v.core.quaternion.setFromUnitVectors(FWD, this.tv2.set(s.d.x, s.d.y, s.d.z));
+      if (v.bone) v.core.rotateX((w.tick - s.born + alpha) * 0.32);
     }
     for (const [key, v] of this.shotViews) {
       if (v.seen) continue;
