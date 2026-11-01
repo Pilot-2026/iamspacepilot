@@ -1,3 +1,23 @@
+import { Music, type Mood } from './music';
+
+/** Steering sounds: a hiss panned to the side you turn to, a rising tone to climb, a deep rush to dive, a whirr to roll. */
+interface Maneuver {
+  yawSrc: AudioBufferSourceNode;
+  yawFilter: BiquadFilterNode;
+  yawPan: StereoPannerNode;
+  yawGain: GainNode;
+  climb: OscillatorNode;
+  climbGain: GainNode;
+  diveSrc: AudioBufferSourceNode;
+  diveFilter: BiquadFilterNode;
+  diveSub: OscillatorNode;
+  diveGain: GainNode;
+  roll: OscillatorNode;
+  rollPan: StereoPannerNode;
+  rollGain: GainNode;
+  lfo: OscillatorNode;
+}
+
 /**
  * All sounds are made live with the Web Audio API, so there are no sound files
  * to download. Browsers only allow audio after the first tap or click, so
@@ -5,6 +25,15 @@
  */
 export class Sound {
   private ctx: AudioContext | null = null;
+  private music: Music | null = null;
+  private musicWanted: { id: string | null; bar: number; on: boolean; volume: number; mood: Mood } = { id: null, bar: 0, on: true, volume: 0.6, mood: 'menu' };
+  /** Called when a music track starts. */
+  onTrack: ((name: string) => void) | null = null;
+  private man: Maneuver | null = null;
+  /** Last steering state, for the short thruster puffs. */
+  private lastX = 0;
+  private lastY = 0;
+  private lastR = 0;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private engine: {
@@ -40,6 +69,39 @@ export class Sound {
     this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.music = new Music(this.ctx, this.noise);
+    this.music.onTrack = (name) => this.onTrack?.(name);
+    const w = this.musicWanted;
+    this.music.setVolume(w.volume);
+    this.music.setEnabled(w.on);
+    this.music.setMood(w.mood);
+    if (w.id) this.music.play(w.id, w.bar);
+  }
+
+  // ---- music ----
+
+  /** Plays a music track: a level id (starting at the build-up), 'menu' or 'intro'. */
+  playMusic(id: string): void {
+    const bar = id === 'menu' || id === 'intro' ? 0 : 4;
+    this.musicWanted.id = id;
+    this.musicWanted.bar = bar;
+    this.music?.play(id, bar);
+  }
+
+  setMusicEnabled(on: boolean): void {
+    this.musicWanted.on = on;
+    this.music?.setEnabled(on);
+  }
+
+  setMusicVolume(v: number): void {
+    this.musicWanted.volume = v;
+    this.music?.setVolume(v);
+  }
+
+  setMusicMood(m: Mood): void {
+    if (this.musicWanted.mood === m) return;
+    this.musicWanted.mood = m;
+    this.music?.setMood(m);
   }
 
   setVolume(v: number): void {
@@ -92,6 +154,121 @@ export class Sound {
     wind.start();
     gain.gain.setTargetAtTime(0.05, ctx.currentTime, 0.3);
     this.engine = { osc1, osc2, filter, gain, wind, windFilter, windGain };
+    this.man = this.makeManeuver(ctx, this.master, this.noise);
+  }
+
+  private makeManeuver(ctx: AudioContext, out: AudioNode, noise: AudioBuffer): Maneuver {
+    const loop = () => {
+      const s = ctx.createBufferSource();
+      s.buffer = noise;
+      s.loop = true;
+      return s;
+    };
+    const gain = () => {
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      return g;
+    };
+    const yawSrc = loop();
+    const yawFilter = ctx.createBiquadFilter();
+    yawFilter.type = 'bandpass';
+    yawFilter.Q.value = 1.4;
+    yawFilter.frequency.value = 1000;
+    const yawPan = ctx.createStereoPanner();
+    const yawGain = gain();
+    yawSrc.connect(yawFilter).connect(yawPan).connect(yawGain).connect(out);
+    const climb = ctx.createOscillator();
+    climb.type = 'triangle';
+    climb.frequency.value = 260;
+    const climbGain = gain();
+    climb.connect(climbGain).connect(out);
+    const diveSrc = loop();
+    const diveFilter = ctx.createBiquadFilter();
+    diveFilter.type = 'lowpass';
+    diveFilter.frequency.value = 400;
+    const diveSub = ctx.createOscillator();
+    diveSub.type = 'sine';
+    diveSub.frequency.value = 68;
+    const diveGain = gain();
+    diveSrc.connect(diveFilter).connect(diveGain);
+    diveSub.connect(diveGain);
+    diveGain.connect(out);
+    const roll = ctx.createOscillator();
+    roll.type = 'square';
+    roll.frequency.value = 150;
+    const rollFilter = ctx.createBiquadFilter();
+    rollFilter.type = 'bandpass';
+    rollFilter.frequency.value = 900;
+    const rollPan = ctx.createStereoPanner();
+    const rollGain = gain();
+    // A fast tremolo makes the roll whirr.
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 14;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.5;
+    const trem = ctx.createGain();
+    trem.gain.value = 0.5;
+    lfo.connect(lfoGain).connect(trem.gain);
+    roll.connect(rollFilter).connect(trem).connect(rollPan).connect(rollGain).connect(out);
+    for (const n of [yawSrc, diveSrc]) n.start(0, Math.random());
+    for (const n of [climb, diveSub, roll, lfo]) n.start();
+    return { yawSrc, yawFilter, yawPan, yawGain, climb, climbGain, diveSrc, diveFilter, diveSub, diveGain, roll, rollPan, rollGain, lfo };
+  }
+
+  /**
+   * Steering sounds, every frame while flying. x: turn (right +), y: nose (up +), r: roll (right +).
+   * Left and right sound different and come from that side; climbing rises, diving rushes low.
+   */
+  maneuver(x: number, y: number, r: number): void {
+    const m = this.man;
+    const ctx = this.ctx;
+    if (!m || !ctx) return;
+    const t = ctx.currentTime;
+    const ax = Math.abs(x);
+    m.yawGain.gain.setTargetAtTime(0.06 * ax, t, 0.06);
+    m.yawFilter.frequency.setTargetAtTime(x > 0 ? 1500 + 500 * ax : 820 - 200 * ax, t, 0.08);
+    m.yawPan.pan.setTargetAtTime(x > 0 ? 0.7 : x < 0 ? -0.7 : 0, t, 0.08);
+    const up = y > 0 ? y : 0;
+    const down = y < 0 ? -y : 0;
+    m.climbGain.gain.setTargetAtTime(0.035 * up, t, 0.06);
+    m.climb.frequency.setTargetAtTime(240 + 190 * up, t, 0.1);
+    m.diveGain.gain.setTargetAtTime(0.07 * down, t, 0.06);
+    m.diveFilter.frequency.setTargetAtTime(300 + 1000 * down, t, 0.1);
+    const ar = Math.abs(r);
+    m.rollGain.gain.setTargetAtTime(0.03 * ar, t, 0.05);
+    m.roll.frequency.setTargetAtTime(130 + 80 * ar, t, 0.08);
+    m.rollPan.pan.setTargetAtTime(r * 0.6, t, 0.08);
+    // A short thruster puff when a move starts.
+    const on = (v: number, last: number) => Math.abs(v) > 0.45 && Math.abs(last) <= 0.45;
+    if (on(x, this.lastX)) this.puff(x > 0 ? 1250 : 650, x > 0 ? 0.75 : -0.75, x > 0 ? 1.4 : 0.8);
+    if (on(y, this.lastY)) this.puff(y > 0 ? 1800 : 380, 0, y > 0 ? 1.6 : 0.6);
+    if (on(r, this.lastR)) this.puff(2600, r > 0 ? 0.5 : -0.5, r > 0 ? 1.3 : 0.75);
+    this.lastX = x;
+    this.lastY = y;
+    this.lastR = r;
+  }
+
+  /** Short filtered noise burst, panned, with the filter sliding by `slide`. */
+  private puff(freq: number, pan: number, slide: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.noise) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = 2;
+    f.frequency.setValueAtTime(freq, t);
+    f.frequency.exponentialRampToValueAtTime(freq * slide, t + 0.16);
+    const p = ctx.createStereoPanner();
+    p.pan.value = pan;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    src.connect(f).connect(p).connect(g).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + 0.2);
   }
 
   stopEngine(): void {
@@ -105,6 +282,13 @@ export class Sound {
     e.osc2.stop(t + 0.5);
     e.wind.stop(t + 0.5);
     this.engine = null;
+    const m = this.man;
+    if (m) {
+      for (const g of [m.yawGain, m.climbGain, m.diveGain, m.rollGain]) g.gain.setTargetAtTime(0, t, 0.05);
+      for (const n of [m.yawSrc, m.diveSrc, m.climb, m.diveSub, m.roll, m.lfo]) n.stop(t + 0.4);
+      this.man = null;
+    }
+    this.lastX = this.lastY = this.lastR = 0;
   }
 
   /** Called every frame while flying. */

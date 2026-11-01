@@ -13,6 +13,9 @@ export interface Settings {
   invertPitch: boolean;
   /** Version of the control defaults this profile has seen. */
   controls: number;
+  /** Background music on or off, and its volume. */
+  music: boolean;
+  musicVolume: number;
   autoHorizon: boolean;
   quality: Quality;
 }
@@ -81,7 +84,7 @@ export function defaultProfile(): Profile {
     v: 1,
     callsign: '',
     pilotKey: newPilotKey(),
-    settings: { volume: 0.8, invertPitch: true, controls: 2, autoHorizon: isTouch, quality: 'auto' },
+    settings: { volume: 0.8, invertPitch: true, controls: 2, music: true, musicVolume: 0.6, autoHorizon: isTouch, quality: 'auto' },
     solo: { level: 'cloud-sea', bots: 3, difficulty: 'pilot' },
     unlocked: 1,
     records: {},
