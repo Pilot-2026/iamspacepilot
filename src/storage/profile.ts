@@ -68,6 +68,8 @@ export interface Profile {
   online: OnlinePrefs;
   /** The ship this pilot flies. */
   ship: ShipId;
+  /** Cheat 33333: your glider is a flying dachshund. */
+  dog: boolean;
 }
 
 export const LOCAL_TOP = 10;
@@ -93,6 +95,7 @@ export function defaultProfile(): Profile {
     highscores: {},
     online: { level: 'cloud-sea', mode: 'ffa', public: true, bots: 3, difficulty: 'pilot', voiceOk: false, openMic: false },
     ship: 'trident',
+    dog: false,
   };
 }
 

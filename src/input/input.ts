@@ -43,6 +43,12 @@ export class InputManager {
 
   private readonly cheatTaps: number[] = [];
   private readonly shipTaps: number[] = [];
+  private readonly dogTaps: number[] = [];
+  private readonly statTaps: number[] = [];
+  /** Cheat 33333: the dachshund on or off. */
+  onDogCheat: () => void = () => undefined;
+  /** 99999: the visit statistics. */
+  onStats: () => void = () => undefined;
   /** Cheat 2222: the next ship. */
   onShipCheat: () => void = () => undefined;
 
@@ -69,6 +75,14 @@ export class InputManager {
       }
       if ((e.code === 'Digit1' || e.code === 'Numpad1') && !e.repeat) {
         if (countTap(this.cheatTaps)) this.onCheat();
+        return;
+      }
+      if ((e.code === 'Digit3' || e.code === 'Numpad3') && !e.repeat) {
+        if (countTap(this.dogTaps)) this.onDogCheat();
+        return;
+      }
+      if ((e.code === 'Digit9' || e.code === 'Numpad9') && !e.repeat) {
+        if (countTap(this.statTaps)) this.onStats();
         return;
       }
       if ((e.code === 'Digit2' || e.code === 'Numpad2') && !e.repeat) {

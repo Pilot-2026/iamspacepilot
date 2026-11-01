@@ -8,7 +8,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 
 - Free flight (turn, pitch, roll). The light wall rolls with your glider: fly level and it stands upright, roll 90° and it lies flat, keep rolling and it twists into a spiral.
 - Ten levels, each with its own look, climbing from the sky into deep space: Cloud Sea, Storm Eye (lightning, updraft), Frost Heights, Jet Stream (wind), Aurora, Orbit, Moon Shadow, Ring World, Nebula (plasma bolts) and Lattice Core (a core that pulls you in). Win a level to open the next one.
-- Cheats for testing: press 1 five times, or tap the score five times, to jump to the next level. Type 2222, or tap the top right corner five times on a touch screen, to fly the next ship.
+- Cheats for testing: press 1 five times, or tap the score five times, to jump to the next level. Type 2222, or tap the top right corner five times on a touch screen, to fly the next ship. Type 33333 (or tap the top left corner five times) and your glider becomes a brown dachshund galloping through the air: tail wagging, ears flapping, looking left, right and back over its shoulder, and spitting bones instead of shots with a little "wuff". It stays a dachshund in every game until you type 33333 again (only you see it; online the others see your ship).
 - 1 to 7 bots in three difficulties (Rookie, Pilot, Ace). They fly smooth curves and only turn hard when a wall is close. The difficulty also sets the pace for everyone in the round: on Rookie all ships fly at 60% speed, on Pilot at normal speed, on Ace at 125% (online too, from the host's choice).
 - The arenas are big (twice the size they started with) and the arena shield closes in after 30 seconds.
 - Every ship casts a shadow on the floor, and yours also on the nearest shield wall and the ceiling, so you can feel how far away the grid is.
@@ -40,6 +40,10 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 ## Score
 
 Per round: 10 points per second in the air, 100 per pilot you outlast, 250 per pilot that hits your wall, 200 per pilot you shoot down, 25 per hit, 50 per bonus ring, 500 for a win. The sum is multiplied by 1 (Rookie), 1.5 (Pilot) or 2 (Ace).
+
+## Visit statistics
+
+Every page load and every flight add to anonymous counters (`POST /api/visit`): all time and per day (Vienna time), by country, city, device type, the site visitors came from, level and solo or online. Only totals are stored in Firestore (`stats/all`, `statsDays/<day>`), no IP addresses and nothing per visitor; country and city come from Netlify's geo data at that moment. Type 99999 in a menu (or tap the version number five times) to see them: the number of visits on top, then visits per day and the breakdowns. `GET /api/stats` returns the same numbers.
 
 ## Online leaderboard
 

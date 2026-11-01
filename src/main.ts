@@ -21,6 +21,7 @@ import { World } from './core/world';
 import { InputManager } from './input/input';
 import { fetchBoard, onlineErrorText, submitScore } from './net/api';
 import { gameErrorText, listGames } from './net/games';
+import { countFlight, countVisit, fetchStats } from './net/stats';
 import type { RoundResult } from './online/match';
 import { OnlineSession, type SessionEvents } from './online/session';
 import { ShipPreviews } from './render/preview';
@@ -100,6 +101,12 @@ class App {
     this.input.onView = () => this.cycleView();
     this.input.onShipCheat = () => this.shipCheat();
     this.touch.onShipCheat = () => this.shipCheat();
+    this.input.onDogCheat = () => this.toggleDog();
+    // 99999 shows the visit statistics (from any menu).
+    this.input.onStats = () => {
+      if (this.state === 'menu' && this.menu.visible) this.menu.showStats();
+    };
+    this.touch.onDogCheat = () => this.toggleDog();
     this.input.onLook = (z, yaw, pitch) => this.look(z, yaw, pitch);
     this.touch.onLook = (z, yaw, pitch) => this.look(z, yaw, pitch);
     this.touch.onLookReset = () => this.view?.resetLook();
@@ -122,6 +129,7 @@ class App {
         this.sound.click();
       },
       loadBoard: (level) => fetchBoard(level),
+      loadStats: () => fetchStats(),
       screen: (screen) => this.menuScreen(screen),
       ships: (canvases) => {
         if (!canvases.length && !this.previews) return;
@@ -147,6 +155,7 @@ class App {
       this.view = new GameView($('scene') as HTMLCanvasElement);
       this.view.setCockpitScreens(this.hud.cockpitLeft, this.hud.cockpitRight, this.hud.radarCanvas);
       this.view.onSplash = () => this.sound.splash();
+      this.view.setDogMode(this.profile.dog);
     } catch {
       this.view = null;
     }
@@ -194,6 +203,7 @@ class App {
       });
     }
     requestAnimationFrame((t) => this.frame(t));
+    countVisit();
   }
 
   private applySettings(): void {
@@ -255,6 +265,7 @@ class App {
     this.sound.startEngine();
     this.goFullscreen();
     this.requestWakeLock();
+    countFlight(this.solo.level, 'solo');
   }
 
   // ---- camera views ----
@@ -433,9 +444,15 @@ class App {
 
   /** Shows the name of a new music track for a moment. */
   private showTrack(name: string): void {
+    if (!this.profile.settings.music) return;
+    this.showToast(`♪ ${name}`);
+  }
+
+  /** A short note at the bottom right. */
+  private showToast(text: string): void {
     const t = this.trackToast;
-    if (!t || !this.profile.settings.music) return;
-    t.textContent = `♪ ${name}`;
+    if (!t) return;
+    t.textContent = text;
     t.hidden = false;
     t.classList.remove('show');
     void t.offsetWidth;
@@ -602,7 +619,9 @@ class App {
           this.sound.thunder();
           break;
         case 'shot': {
-          if (e.id === this.local) {
+          if (e.id === this.local && this.profile.dog) {
+            this.sound.bark();
+          } else if (e.id === this.local) {
             this.sound.shot(1);
           } else {
             const me = w.gliders[this.local];
@@ -744,6 +763,16 @@ class App {
     this.sound.stopEngine();
     this.launch();
     this.hud.message(`Level ${LEVELS[next].index}`, LEVELS[next].name, 1.6);
+  }
+
+  /** Cheat: 33333 (or five taps in the top left corner) turns your glider into a flying dachshund, and back. */
+  private toggleDog(): void {
+    this.profile.dog = !this.profile.dog;
+    saveProfile(this.profile);
+    this.view?.setDogMode(this.profile.dog);
+    const text = this.profile.dog ? '🐶 Dachshund on' : 'Dachshund off';
+    if (this.state === 'menu') this.showToast(text);
+    else this.hud.message(this.profile.dog ? 'Dachshund' : 'Glider', this.profile.dog ? 'Spits bones · 33333 to switch back' : '', 1.6);
   }
 
   /** Cheat: 2222 (or five taps in the top right corner) restarts the round with the next ship. */
@@ -888,6 +917,7 @@ class App {
     this.world = w;
     this.local = local;
     this.solo = null;
+    countFlight(w.spec.id, 'online');
     this.final = null;
     (document.activeElement as HTMLElement | null)?.blur?.();
     view.load(w, local);

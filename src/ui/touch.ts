@@ -50,6 +50,9 @@ export class TouchControls {
   /** Cheat: five taps in the top right corner switch to the next ship. */
   onShipCheat: () => void = () => undefined;
   private readonly cornerTaps: number[] = [];
+  /** Cheat: five taps in the top left corner switch the dachshund on or off. */
+  onDogCheat: () => void = () => undefined;
+  private readonly dogTaps: number[] = [];
 
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `
@@ -164,6 +167,10 @@ export class TouchControls {
     const r0 = this.root.getBoundingClientRect();
     if (e.clientX > r0.right - 90 && e.clientY < r0.top + 90) {
       if (countTap(this.cornerTaps)) this.onShipCheat();
+      return;
+    }
+    if (e.clientX < r0.left + 90 && e.clientY < r0.top + 90) {
+      if (countTap(this.dogTaps)) this.onDogCheat();
       return;
     }
     if (this.pinch) return;

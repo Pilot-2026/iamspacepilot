@@ -9,6 +9,9 @@ import { SHIPS, isShip } from '../core/ships';
 import { hangarScreen } from './hangar';
 import { playIntro } from './intro';
 import { ARROW, esc, frame, ordinal, siteFooter, wordmark } from './html';
+import { statsHtml } from './stats-view';
+import type { StatsResult } from '../net/stats';
+import { countTap } from '../input/input';
 import {
   clampBots,
   codeScreen,
@@ -46,6 +49,7 @@ export interface MenuHandlers {
   settingsChanged(): void;
   click(): void;
   loadBoard(level: LevelId): Promise<BoardResult>;
+  loadStats(): Promise<StatsResult>;
   online: OnlineHandlers;
   /** Hangar: draw turning ships into these canvases (none = stop). */
   ships(canvases: HTMLCanvasElement[]): void;
@@ -71,6 +75,7 @@ export interface OnlineHandlers {
 
 type Screen =
   | 'gate'
+  | 'stats'
   | 'intro'
   | 'callsign'
   | 'main'
@@ -126,6 +131,8 @@ export class Menu {
   private onlineCount = -1;
   /** Invite link opened before a callsign was chosen. */
   private pendingJoin = '';
+  private statsReturn: Screen = 'main';
+  private readonly verTaps: number[] = [];
   /** Where the hangar returns to. */
   private hangarReturn: Screen = 'main';
 
@@ -227,6 +234,7 @@ export class Menu {
       (this.root.querySelector('.mi:not([aria-disabled="true"])') as HTMLElement | null);
     first?.focus({ preventScroll: true });
     if (screen === 'board') this.loadBoard();
+    if (screen === 'stats') this.loadStats();
     if (screen === 'online') this.startList();
     if (screen === 'hangar') this.h.ships(Array.from(this.root.querySelectorAll<HTMLCanvasElement>('canvas[data-ship]')));
     if (screen === 'main') this.loadCount();
@@ -352,6 +360,30 @@ export class Menu {
     this.onlineStatus = text;
     const el = this.root.querySelector('#online-status');
     if (el) el.textContent = text;
+  }
+
+  /** The visit statistics (99999, or five taps on the version). */
+  showStats(): void {
+    if (this.screen === 'stats') return;
+    this.statsReturn = this.screen === 'pause' || this.screen === 'online-pause' ? 'main' : this.screen;
+    this.show('stats');
+  }
+
+  private loadStats(): void {
+    void this.h.loadStats().then((res) => {
+      if (this.screen !== 'stats') return;
+      const box = this.root.querySelector('#stats-box');
+      if (box) box.innerHTML = res.ok ? statsHtml(res.stats) : `<p class="m-hint">The statistics are not available right now (${esc(res.error)}).</p>`;
+    });
+  }
+
+  private statsScreen(): string {
+    this.back = this.statsReturn;
+    return frame(
+      `<p class="m-kicker">Statistics</p>
+      <div id="stats-box" class="st-box" aria-live="polite"><p class="m-hint">Counting…</p></div>
+      <div class="m-list"><button class="mi" data-act="back" data-focus>Back ${ARROW}</button></div>`,
+    );
   }
 
   private loadBoard(): void {
@@ -622,6 +654,9 @@ export class Menu {
         this.back = 'settings';
         this.show('callsign');
         break;
+      case 'ver':
+        if (countTap(this.verTaps)) this.showStats();
+        break;
       case 'board-level':
         this.boardLevel = val as LevelId;
         this.show('board');
@@ -799,6 +834,8 @@ export class Menu {
         return hangarScreen(this.profile.ship);
       case 'board':
         return this.boardScreen();
+      case 'stats':
+        return this.statsScreen();
       case 'pause':
         return this.pauseScreen();
       case 'result':
@@ -846,7 +883,7 @@ export class Menu {
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span>v0.11 · Glass worlds</span><span>Fly free. Leave light behind.</span>`,
+      `<span class="m-ver" data-act="ver">v0.12 · Good boy</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
