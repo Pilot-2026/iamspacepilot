@@ -8,7 +8,7 @@ import { LOCAL_TOP, saveProfile, validateCallsign, type Profile, type Quality } 
 import { SHIPS, isShip } from '../core/ships';
 import { hangarScreen } from './hangar';
 import { playIntro } from './intro';
-import { ARROW, RED_BAR, esc, frame, ordinal, wordmark } from './html';
+import { ARROW, esc, frame, ordinal, siteFooter, wordmark } from './html';
 import {
   clampBots,
   codeScreen,
@@ -126,9 +126,8 @@ export class Menu {
 
   /** Yellow background layer under the ship stage. */
   private readonly bg: HTMLElement | null = document.getElementById('menu-bg');
-  /** The red bar at the bottom edge; it gives way to the one above the footer when that one scrolls into view. */
-  private readonly fixedBar: HTMLElement;
-  private barWatch: IntersectionObserver | null = null;
+  /** Red bar, legal links, logos and portrait: always at the bottom edge while a menu is shown. */
+  private readonly foot: HTMLElement;
 
   constructor(
     private readonly root: HTMLElement,
@@ -136,11 +135,16 @@ export class Menu {
     private readonly h: MenuHandlers,
   ) {
     this.boardLevel = profile.solo.level;
-    this.fixedBar = document.createElement('aside');
-    this.fixedBar.className = 'm-redbar m-redbar-fixed';
-    this.fixedBar.innerHTML = RED_BAR;
-    this.fixedBar.hidden = true;
-    root.after(this.fixedBar);
+    this.foot = document.createElement('footer');
+    this.foot.id = 'site-foot';
+    this.foot.innerHTML = siteFooter();
+    this.foot.hidden = true;
+    root.after(this.foot);
+    // The menu ends above the footer, whatever height the footer has on this screen.
+    const fit = () => document.documentElement.style.setProperty('--foot-h', `${this.foot.hidden ? 0 : this.foot.offsetHeight}px`);
+    if (typeof ResizeObserver === 'function') new ResizeObserver(fit).observe(this.foot);
+    window.addEventListener('resize', fit);
+    this.fitFoot = fit;
     root.addEventListener('click', (e) => this.onClick(e));
     root.addEventListener('input', (e) => this.onInput(e));
     root.addEventListener('keydown', (e) => this.onKey(e));
@@ -150,28 +154,19 @@ export class Menu {
     return !this.root.hidden;
   }
 
-  /** Shows the fixed red bar unless the one above the footer is on screen. */
-  private watchBar(): void {
-    this.barWatch?.disconnect();
-    this.barWatch = null;
-    const inflow = this.root.querySelector('.m-redbar');
-    document.body.classList.toggle('menu-bar', !!inflow);
-    this.fixedBar.hidden = !inflow;
-    if (!inflow || typeof IntersectionObserver !== 'function') return;
-    this.barWatch = new IntersectionObserver((entries) => {
-      const e = entries[entries.length - 1];
-      if (!this.root.hidden) this.fixedBar.hidden = e.isIntersecting && e.intersectionRatio > 0.9;
-    }, { root: this.root, threshold: [0, 0.9, 1] });
-    this.barWatch.observe(inflow);
+  private fitFoot: () => void = () => undefined;
+
+  /** Shows or hides the footer at the bottom edge. */
+  private showFoot(on: boolean): void {
+    this.foot.hidden = !on;
+    document.body.classList.toggle('has-foot', on);
+    this.fitFoot();
   }
 
   hide(): void {
     if (this.screen === 'hangar') this.h.ships([]);
     this.root.hidden = true;
-    this.barWatch?.disconnect();
-    this.barWatch = null;
-    this.fixedBar.hidden = true;
-    document.body.classList.remove('menu-bar');
+    this.showFoot(false);
     if (this.bg) this.bg.hidden = true;
     this.h.screen(null);
   }
@@ -180,8 +175,7 @@ export class Menu {
   showIntro(done: () => void): void {
     this.screen = 'intro';
     this.root.hidden = false;
-    this.fixedBar.hidden = true;
-    document.body.classList.remove('menu-bar');
+    this.showFoot(true);
     this.setBg('intro');
     this.h.screen('intro');
     playIntro(this.root, done);
@@ -191,8 +185,7 @@ export class Menu {
   showGate(done: () => void): void {
     this.screen = 'gate';
     this.root.hidden = false;
-    this.fixedBar.hidden = true;
-    document.body.classList.remove('menu-bar');
+    this.showFoot(true);
     this.setBg('intro');
     this.h.screen('gate');
     this.root.innerHTML = `<section class="gate">
@@ -223,7 +216,7 @@ export class Menu {
     this.h.screen(screen);
     this.root.innerHTML = this.render(screen);
     this.root.scrollTop = 0;
-    this.watchBar();
+    this.showFoot(true);
     const first =
       (this.root.querySelector('[data-focus]') as HTMLElement | null) ??
       (this.root.querySelector('.mi:not([aria-disabled="true"])') as HTMLElement | null);

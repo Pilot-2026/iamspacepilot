@@ -31,26 +31,27 @@ export function wordmark(tag = 'h1'): string {
 
 const ext = (href: string, text: string) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
 
-/**
- * Under every menu: a red bar that stays at the bottom edge, and below it the
- * legal links, the two websites with their logos and the portrait.
- */
 /** The text of the red bar. */
 export const RED_BAR = `You want to fly in REAL: ${ext('https://www.pilotFilm.at', 'Contact me')} 🤗 Want to make AI work for you? Reach out for my workshops and keynotes 🚀`;
 
+/**
+ * The footer that is always at the bottom edge of every menu screen: the red
+ * bar, and under it the legal links, the two websites with their logos and
+ * the portrait. Compact enough to fit on any screen.
+ */
 export function siteFooter(): string {
-  return `<aside class="m-redbar">${RED_BAR}</aside>
-<footer class="m-site">
-  <nav class="m-legal" aria-label="Legal">${ext('https://www.pilotfilm.at/impressum', 'Impressum')}<span aria-hidden="true">·</span><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a><span aria-hidden="true">·</span><a href="/datenschutz.html" target="_blank" rel="noopener" hreflang="de" lang="de">Datenschutz</a></nav>
-  <div class="m-sites">
-    <a class="m-site-link" href="https://www.Andreas-Schmoelzer.at" target="_blank" rel="noopener"><span>www.Andreas-Schmoelzer.at</span><img src="/img/andreas-schmoelzer-logo.png" alt="Andreas Schmölzer, Keynote-Speaker" width="207" height="37" loading="lazy"></a>
-    <a class="m-site-link" href="https://www.pilotFilm.at" target="_blank" rel="noopener"><span>www.pilotFilm.at</span><img src="/img/pilotfilm-logo.png" alt="pilotFilm" width="178" height="42" loading="lazy"></a>
+  return `<div class="sf-bar">${RED_BAR}</div>
+<div class="sf-strip">
+  <nav class="sf-legal" aria-label="Legal">${ext('https://www.pilotfilm.at/impressum', 'Impressum')}<a href="/privacy.html" target="_blank" rel="noopener">Privacy</a><a href="/datenschutz.html" target="_blank" rel="noopener" hreflang="de" lang="de">Datenschutz</a></nav>
+  <div class="sf-sites">
+    <a class="sf-site" href="https://www.Andreas-Schmoelzer.at" target="_blank" rel="noopener" aria-label="www.Andreas-Schmoelzer.at"><img src="/img/andreas-schmoelzer-logo.png" alt="Andreas Schmölzer, Keynote-Speaker" width="207" height="37"><span>www.Andreas-Schmoelzer.at</span></a>
+    <a class="sf-site" href="https://www.pilotFilm.at" target="_blank" rel="noopener" aria-label="www.pilotFilm.at"><img src="/img/pilotfilm-logo.png" alt="pilotFilm" width="178" height="42"><span>www.pilotFilm.at</span></a>
   </div>
-  <img class="m-portrait" src="/img/andreas-schmoelzer.webp" alt="Andreas Schmölzer" width="160" height="162" loading="lazy">
-</footer>`;
+  <a class="sf-portrait" href="https://www.Andreas-Schmoelzer.at" target="_blank" rel="noopener"><img src="/img/andreas-schmoelzer.webp" alt="Andreas Schmölzer" width="160" height="162"></a>
+</div>`;
 }
 
-/** One menu screen: content column on the left, light trail art on the right; the site footer below. */
+/** One menu screen: content column on the left, light trail art on the right. */
 export function frame(inner: string, foot = ''): string {
-  return `<section class="m-screen"><div class="m-col">${inner}${foot ? `<div class="m-foot">${foot}</div>` : ''}</div>${ART}</section>${siteFooter()}`;
+  return `<section class="m-screen"><div class="m-col">${inner}${foot ? `<div class="m-foot">${foot}</div>` : ''}</div>${ART}</section>`;
 }
