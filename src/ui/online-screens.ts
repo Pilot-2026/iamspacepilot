@@ -92,7 +92,7 @@ function settingsRows(act: string, s: MatchSettings, pub: boolean | null): strin
         <button class="btn" data-act="${act}-bots" data-val="1" aria-label="More bots">+</button>
       </div>
     </div>
-    <div class="m-row"><span class="lbl">Bot skill</span>${seg('diff', (['rookie', 'pilot', 'ace'] as Difficulty[]).map((d) => [d, DIFF_LABEL[d]]), s.difficulty)}</div>
+    <div class="m-row"><span class="lbl">Skill and speed</span>${seg('diff', (['rookie', 'pilot', 'ace'] as Difficulty[]).map((d) => [d, DIFF_LABEL[d]]), s.difficulty)}</div>
   </div>`;
 }
 

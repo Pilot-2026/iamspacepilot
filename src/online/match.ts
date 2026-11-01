@@ -1,4 +1,5 @@
 import { CORE_VERSION, MAX_ONLINE_PILOTS, NET_PROTOCOL } from '../core/config';
+import { PACE } from '../core/solo';
 import { LEVELS } from '../core/levels';
 import { isPower, type PowerId } from '../core/powerups';
 import { SHIP_ORDER, isShip, type ShipId, type SpecialKind } from '../core/ships';
@@ -286,6 +287,7 @@ export class OnlineMatch {
       seed: m.seed,
       online: true,
       teams: m.mode === 'teams',
+      pace: PACE[m.difficulty] ?? 1,
       pilots: m.pilots.map((p, i) => ({
         name: p.name,
         isBot: p.bot,

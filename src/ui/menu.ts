@@ -91,6 +91,11 @@ type Screen =
   | 'nogl';
 
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { rookie: 'Rookie', pilot: 'Pilot', ace: 'Ace' };
+const DIFFICULTY_HINT: Record<Difficulty, string> = {
+  rookie: 'Rookie: everyone flies much slower (60% speed), calm bots. Score ×1.',
+  pilot: 'Pilot: normal speed, sharper bots. Score ×1.5.',
+  ace: 'Ace: everyone flies faster (125% speed), bots hunt you. Score ×2.',
+};
 
 export function formatScore(n: number): string {
   return Math.round(n).toLocaleString('en-US');
@@ -875,6 +880,7 @@ export class Menu {
           </div>
         </div>
         <div class="m-row"><span class="lbl">Difficulty</span><div class="seg">${diffButtons}</div></div>
+        <p class="m-hint m-diff">${DIFFICULTY_HINT[p.difficulty]}</p>
         <div class="m-row"><span class="lbl">Ship</span><div class="seg"><button data-act="hangar" aria-pressed="true">${esc(SHIPS[this.profile.ship].name)} · change</button></div></div>
       </div>
       <p class="m-hint">${record} Win a level to open the next one (${open} of ${LEVEL_ORDER.length} open).</p>
