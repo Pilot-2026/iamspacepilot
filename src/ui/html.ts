@@ -41,7 +41,7 @@ export const RED_BAR = `You want to fly in REAL: ${ext('https://www.pilotFilm.at
 export function siteFooter(): string {
   return `<aside class="m-redbar">${RED_BAR}</aside>
 <footer class="m-site">
-  <nav class="m-legal" aria-label="Legal">${ext('https://www.pilotfilm.at/impressum', 'Impressum')}<span aria-hidden="true">·</span><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a></nav>
+  <nav class="m-legal" aria-label="Legal">${ext('https://www.pilotfilm.at/impressum', 'Impressum')}<span aria-hidden="true">·</span><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a><span aria-hidden="true">·</span><a href="/datenschutz.html" target="_blank" rel="noopener" hreflang="de" lang="de">Datenschutz</a></nav>
   <div class="m-sites">
     <a class="m-site-link" href="https://www.Andreas-Schmoelzer.at" target="_blank" rel="noopener"><span>www.Andreas-Schmoelzer.at</span><img src="/img/andreas-schmoelzer-logo.png" alt="Andreas Schmölzer, Keynote-Speaker" width="207" height="37" loading="lazy"></a>
     <a class="m-site-link" href="https://www.pilotFilm.at" target="_blank" rel="noopener"><span>www.pilotFilm.at</span><img src="/img/pilotfilm-logo.png" alt="pilotFilm" width="178" height="42" loading="lazy"></a>
