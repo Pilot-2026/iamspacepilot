@@ -2280,33 +2280,31 @@ body.has-foot #menu {
 }
 
 .sf-legal a,
-.sf-site {
+.sf-links a {
   color: var(--ink);
 }
 
-.sf-sites {
+/* Order: Andreas Schmölzer's website, pilotFilm's website, then both logos. */
+.sf-links {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 4px 22px;
-  min-width: 0;
-}
-
-.sf-site {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font: 700 clamp(10px, 1.05vw, 13px) / 1.1 var(--f-body);
-  text-decoration: none;
+  gap: 2px 16px;
+  font: 700 clamp(10px, 1.05vw, 13px) / 1.2 var(--f-body);
   white-space: nowrap;
 }
 
-.sf-site span {
-  text-decoration: underline;
+.sf-links a {
   text-underline-offset: 2px;
 }
 
-.sf-site img {
+.sf-logos {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sf-logos img {
   display: block;
   height: clamp(16px, 2.6vw, 26px);
   width: auto;
@@ -2319,26 +2317,26 @@ body.has-foot #menu {
   border-radius: 50%;
 }
 
-/* Smaller screens: logos only (they are links), no web addresses. */
-@media (max-width: 860px) {
-  .sf-site span {
-    display: none;
-  }
-}
-
-/* Phones held upright: two short rows. */
-@media (max-width: 520px) {
+/* Phones held upright: the web addresses on one row, logos and portrait on the next, then the legal links. */
+@media (max-width: 560px) {
   .sf-strip {
     flex-wrap: wrap;
     justify-content: center;
   }
-  .sf-legal {
+  .sf-links {
+    order: 1;
+    width: 100%;
+  }
+  .sf-logos {
+    order: 2;
+  }
+  .sf-portrait {
     order: 3;
+  }
+  .sf-legal {
+    order: 4;
     width: 100%;
     justify-content: center;
-  }
-  .sf-sites {
-    gap: 4px 14px;
   }
 }
 
@@ -2353,7 +2351,7 @@ body.has-foot #menu {
     padding-top: 3px;
     padding-bottom: calc(3px + var(--safe-b));
   }
-  .sf-site img {
+  .sf-logos img {
     height: 16px;
   }
   .sf-portrait img {
