@@ -3,10 +3,10 @@
  * flight on the server, so client and server must run the same rules. Bump this
  * whenever a change alters how a flight plays out.
  */
-export const CORE_VERSION = 'core-4';
+export const CORE_VERSION = 'core-5';
 
 /** Version of the online message format. Devices with different versions cannot play together. */
-export const NET_PROTOCOL = 'p3';
+export const NET_PROTOCOL = 'p4';
 /** Pilots per online game, bots included. */
 export const MAX_ONLINE_PILOTS = 8;
 

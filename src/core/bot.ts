@@ -271,6 +271,9 @@ function freeDistance(w: World, i: number, R: number, look: number): number {
       if (t > 0 && t < free) free = t;
     }
   }
+  // Obstacles in the arena, with room to spare.
+  const ob = w.obstacleRay(p, d, free, 4);
+  if (ob < free) free = ob;
   // Other gliders count as obstacles too, so bots do not fly into each other.
   for (const o of w.gliders) {
     if (o.id === i || !o.alive) continue;

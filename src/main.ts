@@ -12,6 +12,7 @@ import { Sound } from './audio/sound';
 import { DT } from './core/config';
 import { ReplayRecorder, quantize } from './core/replay';
 import { LEVELS, LEVEL_ORDER, nextLevel } from './core/levels';
+import { OBSTACLE_NAMES } from './core/obstacles';
 import { POWERS } from './core/powerups';
 import { liveScore, playerFinished, soloScore, soloWorldSetup, type SoloScore, type SoloSetup } from './core/solo';
 import { NEUTRAL_INPUT, type CrashInfo, type SimEvent } from './core/types';
@@ -543,6 +544,8 @@ class App {
         return `${name} was struck by lightning`;
       case 'core':
         return `${name} flew into the core`;
+      case 'obstacle':
+        return `${name} crashed into ${this.obstacleName(w, c)}`;
       case 'shot':
         return `${name} was shot down by ${w.gliders[c.by]?.name ?? 'a pilot'}`;
       case 'left':
@@ -571,6 +574,10 @@ class App {
         return short ? 'Lightning' : 'Lightning struck you.';
       case 'core':
         return short ? 'The core' : 'You flew into the core.';
+      case 'obstacle': {
+        const n = this.obstacleName(w, c);
+        return short ? `Into ${n}` : `You crashed into ${n}.`;
+      }
       case 'shot': {
         const n = w.gliders[c.by]?.name ?? 'a pilot';
         return short ? `Shot down by ${n}` : `${n} shot you down.`;
@@ -578,6 +585,11 @@ class App {
       case 'left':
         return short ? 'Left the game' : 'You left the game.';
     }
+  }
+
+  private obstacleName(w: World, c: CrashInfo): string {
+    const o = w.obstacles[c.seg];
+    return (o && OBSTACLE_NAMES[o.def.look]) || 'an obstacle';
   }
 
   /** Starts the level after the current one. */

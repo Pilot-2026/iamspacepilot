@@ -32,13 +32,13 @@ export interface PilotInput {
 export const NEUTRAL_INPUT: Readonly<PilotInput> = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false, special: false };
 
 /** 'shot': shot down by another glider. 'left': online pilot who left the game during the round. */
-export type CrashKind = 'wall' | 'shield' | 'floor' | 'ceiling' | 'collision' | 'lightning' | 'core' | 'shot' | 'left';
+export type CrashKind = 'wall' | 'shield' | 'floor' | 'ceiling' | 'collision' | 'lightning' | 'core' | 'obstacle' | 'shot' | 'left';
 
 export interface CrashInfo {
   kind: CrashKind;
   /** Owner of the wall or the other glider, -1 if nobody. */
   by: number;
-  /** Wall segment that was hit, -1 if none. */
+  /** Wall segment that was hit (obstacle index for obstacles), -1 if none. */
   seg: number;
 }
 

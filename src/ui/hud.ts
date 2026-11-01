@@ -308,6 +308,16 @@ export class Hud {
         alert = `${what} ${Math.max(0, Math.ceil(bd))} m`;
         alertClose = bd < 10;
       }
+      // Obstacles warn like the shield does.
+      if (world.obstacles.length) {
+        const od = world.obstacleDist(g.p.x, g.p.y, g.p.z);
+        const o = world.obstacles[world.nearestObstacle];
+        if (o && od < 14 && od < bd) {
+          add(o.c.x - g.p.x, o.c.y - g.p.y, o.c.z - g.p.z, 1 - Math.max(0, od) / 14);
+          alert = `Obstacle ${Math.max(0, Math.ceil(od))} m`;
+          alertClose = od < 6;
+        }
+      }
     }
     if (this.alert.textContent !== alert) this.alert.textContent = alert;
     this.alert.hidden = !alert;
@@ -386,6 +396,57 @@ export class Hud {
       }
     });
     ctx.globalAlpha = 1;
+
+    // Obstacles as seen from above: spheres as discs, rods as thick lines, rings as rings.
+    ctx.fillStyle = 'rgba(220,220,235,0.3)';
+    ctx.strokeStyle = 'rgba(235,235,250,0.55)';
+    for (const o of world.obstacles) {
+      const x = toX(o.c.x, o.c.z);
+      const y = toY(o.c.x, o.c.z);
+      const reach = o.reach * sc;
+      if (x * x + y * y > (R + reach) * (R + reach)) continue;
+      const shape = o.def.shape;
+      if (shape.kind === 'sphere') {
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(2.5 * px, shape.r * sc), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (shape.kind === 'capsule') {
+        ctx.lineWidth = Math.max(3 * px, shape.r * 2 * sc);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(toX(o.c.x - o.a.x * shape.half, o.c.z - o.a.z * shape.half), toY(o.c.x - o.a.x * shape.half, o.c.z - o.a.z * shape.half));
+        ctx.lineTo(toX(o.c.x + o.a.x * shape.half, o.c.z + o.a.z * shape.half), toY(o.c.x + o.a.x * shape.half, o.c.z + o.a.z * shape.half));
+        ctx.stroke();
+      } else {
+        // Two directions across the ring's plane.
+        const ax = o.a.x;
+        const ay = o.a.y;
+        const az = o.a.z;
+        let ux = -az;
+        let uz = ax;
+        let uy = 0;
+        if (ux * ux + uz * uz < 1e-6) {
+          ux = 1;
+          uz = 0;
+        }
+        const ul = Math.hypot(ux, uy, uz);
+        ux /= ul;
+        uz /= ul;
+        const vx = ay * uz - az * uy;
+        const vz = ax * uy - ay * ux;
+        ctx.lineWidth = Math.max(2 * px, shape.r * 2 * sc);
+        ctx.beginPath();
+        for (let k = 0; k <= 24; k++) {
+          const th = (k / 24) * Math.PI * 2;
+          const wx = o.c.x + shape.R * (ux * Math.cos(th) + vx * Math.sin(th));
+          const wz = o.c.z + shape.R * (uz * Math.cos(th) + vz * Math.sin(th));
+          if (k === 0) ctx.moveTo(toX(wx, wz), toY(wx, wz));
+          else ctx.lineTo(toX(wx, wz), toY(wx, wz));
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.lineCap = 'butt';
 
     // Bonus rings, in the colour of their bonus.
     ctx.lineWidth = 2 * px;
