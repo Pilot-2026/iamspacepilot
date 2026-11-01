@@ -88,7 +88,7 @@ export function playIntro(root: HTMLElement, done: () => void): void {
   const skip = (e: Event) => {
     if (e instanceof KeyboardEvent && (e.code === 'KeyM' || e.repeat)) return;
     // The music button may be pressed during the intro without skipping it.
-    if (e.target instanceof Element && e.target.closest('.music-btn')) return;
+    if (e.target instanceof Element && e.target.closest('.music-btn, .sound-menu, #site-foot')) return;
     // The key that ends the intro must not also press the first menu button.
     if (e instanceof KeyboardEvent) e.preventDefault();
     finish();

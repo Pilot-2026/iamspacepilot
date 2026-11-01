@@ -2050,7 +2050,6 @@ body.flying .sound-menu {
 :root {
   --navy: #000088;
   --red: #a60000;
-  --bar-h: 46px;
 }
 
 .wordmark .w1 {
@@ -2222,135 +2221,168 @@ body.flying .sound-menu {
   background: rgba(255, 230, 0, 0.7);
 }
 
-/* ---------- Red bar and site footer under every menu ---------- */
+/* ---------- Footer at the bottom edge of every menu: red bar, legal links, logos, portrait ---------- */
 
-.m-screen {
-  min-height: calc(100% - var(--bar-h));
-}
-
-.m-redbar {
-  position: relative;
-  min-height: var(--bar-h);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px calc(16px + var(--safe-r)) calc(8px + var(--safe-b)) calc(16px + var(--safe-l));
-  /* Just short of opaque: a fully opaque full-width bar makes some browsers skip drawing the 3D view behind the menu. */
-  background: rgba(217, 0, 0, 0.97);
-  color: #fff;
-  font: 600 14px/1.35 var(--f-body);
-  text-align: center;
-  text-wrap: balance;
-}
-
-.m-redbar a {
-  color: #fff;
-  font-weight: 800;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.m-redbar a:hover,
-.m-redbar a:focus-visible {
-  color: var(--yellow);
-}
-
-.m-site {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px 32px;
-  /* Room at the bottom for the sound button. */
-  padding: 26px calc(28px + var(--safe-r)) calc(116px + var(--safe-b)) calc(28px + var(--safe-l));
-  background: rgba(255, 230, 0, 0.97);
-  border-top: 2px solid var(--ink);
-}
-
-.m-legal {
-  display: flex;
-  gap: 10px;
-  font: 700 13px/1 var(--f-data);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.m-legal a,
-.m-site-link {
-  color: var(--ink);
-}
-
-.m-sites {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px 36px;
-  align-items: center;
-}
-
-.m-site-link {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  font: 700 15px/1.2 var(--f-body);
-  text-decoration: none;
-}
-
-.m-site-link span {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.m-site-link img {
-  height: 34px;
-  width: auto;
-}
-
-.m-portrait {
-  width: 120px;
-  height: auto;
-  border-radius: 50%;
-}
-
-/* With the red bar at the bottom the sound button sits above it. */
-body.menu-bar:not(.flying) .music-btn {
-  bottom: calc(14px + var(--bar-h) + var(--safe-b));
-}
-
-body.menu-bar:not(.flying) .music-toast {
-  bottom: calc(72px + var(--bar-h) + var(--safe-b));
-}
-
-body.menu-bar:not(.flying) .sound-menu {
-  --bar-h-gap: var(--bar-h);
-  bottom: calc(68px + var(--bar-h) + var(--safe-b));
-}
-
-@media (max-width: 760px) {
-  :root {
-    --bar-h: 62px;
-  }
-  .m-redbar {
-    font-size: 12.5px;
-  }
-}
-
-@media (max-width: 420px) {
-  :root {
-    --bar-h: 78px;
-  }
-}
-
-/* The copy of the red bar that stays at the bottom edge while the real one is below the fold. */
-.m-redbar-fixed {
+#site-foot {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 31;
+  display: grid;
+  font-family: var(--f-body);
+}
+
+/* The menu ends above the footer, so nothing is ever hidden behind it. */
+body.has-foot #menu {
+  bottom: var(--foot-h, 0px);
+}
+
+.sf-bar {
+  padding: 5px calc(12px + var(--safe-r)) 5px calc(12px + var(--safe-l));
+  /* Just short of opaque: a fully opaque full-width bar makes some browsers skip drawing the 3D view behind the menu. */
+  background: rgba(217, 0, 0, 0.97);
+  color: #fff;
+  font: 600 clamp(10.5px, 1.25vw, 14px) / 1.3 var(--f-body);
+  text-align: center;
+  text-wrap: balance;
+}
+
+.sf-bar a {
+  color: #fff;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sf-bar a:hover,
+.sf-bar a:focus-visible {
+  color: var(--yellow);
+}
+
+.sf-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 18px;
+  padding: 5px calc(12px + var(--safe-r)) calc(5px + var(--safe-b)) calc(12px + var(--safe-l));
+  background: rgba(255, 230, 0, 0.97);
+  border-top: 1.5px solid var(--ink);
+}
+
+.sf-legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  font: 700 clamp(9.5px, 1vw, 12px) / 1.2 var(--f-data);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sf-legal a,
+.sf-site {
+  color: var(--ink);
+}
+
+.sf-sites {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 22px;
+  min-width: 0;
+}
+
+.sf-site {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 700 clamp(10px, 1.05vw, 13px) / 1.1 var(--f-body);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.sf-site span {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sf-site img {
+  display: block;
+  height: clamp(16px, 2.6vw, 26px);
+  width: auto;
+}
+
+.sf-portrait img {
+  display: block;
+  width: clamp(28px, 4.4vw, 44px);
+  height: auto;
+  border-radius: 50%;
+}
+
+/* Smaller screens: logos only (they are links), no web addresses. */
+@media (max-width: 860px) {
+  .sf-site span {
+    display: none;
+  }
+}
+
+/* Phones held upright: two short rows. */
+@media (max-width: 520px) {
+  .sf-strip {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .sf-legal {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+  .sf-sites {
+    gap: 4px 14px;
+  }
+}
+
+/* Very low screens (phones held sideways): one tight row each. */
+@media (max-height: 430px) {
+  .sf-bar {
+    padding-top: 3px;
+    padding-bottom: 3px;
+    font-size: 10.5px;
+  }
+  .sf-strip {
+    padding-top: 3px;
+    padding-bottom: calc(3px + var(--safe-b));
+  }
+  .sf-site img {
+    height: 16px;
+  }
+  .sf-portrait img {
+    width: 26px;
+  }
+}
+
+/* With the footer at the bottom the sound button, its menu and the track name sit above it. */
+body.has-foot:not(.flying) .music-btn {
+  bottom: calc(10px + var(--foot-h, 0px));
+}
+
+body.has-foot:not(.flying) .sound-menu {
+  bottom: calc(62px + var(--foot-h, 0px));
+}
+
+body.has-foot:not(.flying) .music-toast {
+  bottom: calc(64px + var(--foot-h, 0px));
 }
 
 /* The track name shows above the sound button, never on top of it. */
 .music-toast {
   right: calc(16px + var(--safe-r));
   bottom: calc(72px + var(--safe-b));
+}
+
+/* Narrow phones: the whole title with its round logo fits across the screen. */
+@media (max-width: 600px) {
+  .intro-title {
+    font-size: clamp(22px, 7.6vw, 46px);
+  }
 }
