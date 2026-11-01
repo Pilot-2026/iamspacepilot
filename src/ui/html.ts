@@ -43,9 +43,13 @@ export function siteFooter(): string {
   return `<div class="sf-bar">${RED_BAR}</div>
 <div class="sf-strip">
   <nav class="sf-legal" aria-label="Legal">${ext('https://www.pilotfilm.at/impressum', 'Impressum')}<a href="/privacy.html" target="_blank" rel="noopener">Privacy</a><a href="/datenschutz.html" target="_blank" rel="noopener" hreflang="de" lang="de">Datenschutz</a></nav>
-  <div class="sf-sites">
-    <a class="sf-site" href="https://www.Andreas-Schmoelzer.at" target="_blank" rel="noopener" aria-label="www.Andreas-Schmoelzer.at"><img src="/img/andreas-schmoelzer-logo.png" alt="Andreas Schmölzer, Keynote-Speaker" width="207" height="37"><span>www.Andreas-Schmoelzer.at</span></a>
-    <a class="sf-site" href="https://www.pilotFilm.at" target="_blank" rel="noopener" aria-label="www.pilotFilm.at"><img src="/img/pilotfilm-logo.png" alt="pilotFilm" width="178" height="42"><span>www.pilotFilm.at</span></a>
+  <div class="sf-links">
+    ${ext('https://www.Andreas-Schmoelzer.at', 'www.Andreas-Schmoelzer.at')}
+    ${ext('https://www.pilotFilm.at', 'www.pilotFilm.at')}
+  </div>
+  <div class="sf-logos">
+    <a href="https://www.Andreas-Schmoelzer.at" target="_blank" rel="noopener"><img src="/img/andreas-schmoelzer-logo.png" alt="Andreas Schmölzer, Keynote-Speaker" width="207" height="37"></a>
+    <a href="https://www.pilotFilm.at" target="_blank" rel="noopener"><img src="/img/pilotfilm-logo.png" alt="pilotFilm" width="178" height="42"></a>
   </div>
   <a class="sf-portrait" href="https://www.Andreas-Schmoelzer.at" target="_blank" rel="noopener"><img src="/img/andreas-schmoelzer.webp" alt="Andreas Schmölzer" width="160" height="162"></a>
 </div>`;
