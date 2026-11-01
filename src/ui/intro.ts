@@ -1,12 +1,15 @@
 /**
  * The title sequence: words flash up, then the letters of iamSpacePilot fly in
  * from everywhere, flicker through other letters and lock into the title.
- * Any key, click or tap skips it.
+ * The finished title stays on screen until a key, click or tap; any of them
+ * also skips the sequence while it runs.
  */
 
 const WORDS = ['FLY', 'FREE', 'I AM', 'SPACE', 'PILOT', 'LIGHT', 'WALLS', 'SKY', 'BRAVE', 'GOLD', 'SPEED', 'ORBIT', 'NEBULA', 'BOOST'];
 const GLYPHS = 'IAMSPCELOTVWXYZ*#+';
-const LENGTH = 7.6;
+/** When the title stands complete and waits for a tap. */
+const HOLD = 6.4;
+const touchFirst = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
 export function playIntro(root: HTMLElement, done: () => void): void {
   const parts: [string, string][] = [
@@ -22,7 +25,8 @@ export function playIntro(root: HTMLElement, done: () => void): void {
     <div class="intro-words" aria-hidden="true"></div>
     <h1 class="wordmark intro-title" aria-label="iamSpacePilot">${letters}</h1>
     <p class="intro-tag">Fly free. Leave light behind.</p>
-    <p class="intro-skip">Press any key or tap to skip</p>
+    <p class="intro-start">${touchFirst() ? 'Tap to start' : 'Press any key or click to start'}</p>
+    <p class="intro-skip">${touchFirst() ? 'Tap to skip' : 'Press any key or click to skip'}</p>
   </section>`;
   const section = root.querySelector('.intro') as HTMLElement;
   const wordsBox = root.querySelector('.intro-words') as HTMLElement;
@@ -74,13 +78,15 @@ export function playIntro(root: HTMLElement, done: () => void): void {
     }
   }, 60);
   at(5.2, () => section.classList.add('tagged'));
-  at(LENGTH - 0.5, () => section.classList.add('out'));
-  at(LENGTH, () => finish());
+  // The title stays; only a tap or a key goes on to the menu.
+  at(HOLD, () => section.classList.add('hold'));
 
   const skip = (e: Event) => {
     if (e instanceof KeyboardEvent && (e.code === 'KeyM' || e.repeat)) return;
     // The music button may be pressed during the intro without skipping it.
     if (e.target instanceof Element && e.target.closest('.music-btn')) return;
+    // The key that ends the intro must not also press the first menu button.
+    if (e instanceof KeyboardEvent) e.preventDefault();
     finish();
   };
   function finish(): void {
@@ -88,16 +94,17 @@ export function playIntro(root: HTMLElement, done: () => void): void {
     finished = true;
     for (const t of timers) window.clearTimeout(t);
     window.clearInterval(scramble);
-    for (const type of ['keydown', 'pointerdown']) window.removeEventListener(type, skip, true);
+    for (const type of ['keydown', 'pointerup']) window.removeEventListener(type, skip, true);
     done();
   }
-  for (const type of ['keydown', 'pointerdown']) window.addEventListener(type, skip, true);
+  // pointerup, not pointerdown: on iPhones only the end of a tap may start the sound.
+  for (const type of ['keydown', 'pointerup']) window.addEventListener(type, skip, true);
   if (reduced) {
     for (const el of els) {
       el.style.transform = 'none';
       el.style.opacity = '1';
       settled.add(el);
     }
-    section.classList.add('tagged');
+    section.classList.add('tagged', 'hold');
   }
 }

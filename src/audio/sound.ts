@@ -18,15 +18,58 @@ interface Maneuver {
   lfo: OscillatorNode;
 }
 
+type SessionType = 'auto' | 'playback' | 'play-and-record' | 'ambient' | 'transient' | 'transient-solo';
+
+/** Safari's audio session (iOS 16.4+): 'playback' keeps sounds on when the ring/silent switch is set to silent. */
+function audioSession(): { type: SessionType } | null {
+  return (navigator as Navigator & { audioSession?: { type: SessionType } }).audioSession ?? null;
+}
+
+let silentUrl = '';
+
+/** A short silent WAV file. */
+function silentWav(): string {
+  if (silentUrl) return silentUrl;
+  const n = 4000;
+  const buf = new ArrayBuffer(44 + n);
+  const v = new DataView(buf);
+  const str = (o: number, t: string) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF');
+  v.setUint32(4, 36 + n, true);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true);
+  v.setUint32(28, 8000, true);
+  v.setUint16(32, 1, true);
+  v.setUint16(34, 8, true);
+  str(36, 'data');
+  v.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+  silentUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  return silentUrl;
+}
+
 /**
  * All sounds are made live with the Web Audio API, so there are no sound files
- * to download. Browsers only allow audio after the first tap or click, so
- * unlock() is called from a button press.
+ * to download. The audio starts as early as the browser allows: right away
+ * where that is permitted, otherwise with the first tap, click or key.
+ * iPhones and iPads need extra care: audio must be resumed inside a real tap
+ * (touchend or click, not touchstart), it can be interrupted (a call, Siri,
+ * another app) and the silent switch would mute it.
  */
 export class Sound {
   private ctx: AudioContext | null = null;
   private music: Music | null = null;
-  private musicWanted: { id: string | null; bar: number; on: boolean; volume: number; mood: Mood } = { id: null, bar: 0, on: true, volume: 0.6, mood: 'menu' };
+  private musicWanted: { start: boolean; on: boolean; volume: number; mood: Mood } = { start: false, on: true, volume: 0.6, mood: 'menu' };
+  /** Silent looping audio element: on older iPhones it makes Web Audio ignore the silent switch. */
+  private keepAlive: HTMLAudioElement | null = null;
+  /** The radio microphone is (or was) on: the audio session must allow recording. */
+  private capture = false;
+  private listening = false;
+  private playlistBegun = false;
   /** Called when a music track starts. */
   onTrack: ((name: string) => void) | null = null;
   private man: Maneuver | null = null;
@@ -49,11 +92,64 @@ export class Sound {
   private nextWarn = 0;
   private nextShield = 0;
 
+  /**
+   * Creates the audio engine as soon as the page starts and listens for the
+   * taps and keys that may switch audio on. Without a tap the music starts
+   * at once only where the browser permits it.
+   */
+  init(): void {
+    this.create();
+    this.setSession();
+    if (this.listening) return;
+    this.listening = true;
+    const go = () => this.unlock();
+    for (const type of ['pointerup', 'touchend', 'click', 'keydown', 'mousedown']) window.addEventListener(type, go, { capture: true, passive: true });
+  }
+
+  /** Called from every tap and key: starts or restarts audio when the browser stopped it. */
   unlock(): void {
-    if (this.ctx) {
-      if (this.ctx.state === 'suspended') void this.ctx.resume();
-      return;
+    if (!this.ctx) this.create();
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.setSession();
+    // 'interrupted' is Safari's state after a call or Siri.
+    if (ctx.state !== 'running' && ctx.state !== 'closed' && !document.hidden) void ctx.resume().catch(() => undefined);
+    if (!audioSession() && !this.keepAlive && /iP(hone|ad|od)|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document) {
+      try {
+        const a = new Audio(silentWav());
+        a.loop = true;
+        a.setAttribute('playsinline', '');
+        a.setAttribute('x-webkit-airplay', 'deny');
+        (a as HTMLAudioElement & { disableRemotePlayback?: boolean }).disableRemotePlayback = true;
+        a.play().then(
+          () => (this.keepAlive = a),
+          () => undefined,
+        );
+      } catch {
+        // Optional.
+      }
     }
+  }
+
+  /** The radio microphone needs a recording audio session; without it 'playback' keeps the silent switch from muting the game. */
+  setCapture(on: boolean): void {
+    this.capture = on;
+    this.setSession();
+  }
+
+  private setSession(): void {
+    const s = audioSession();
+    if (!s) return;
+    const want: SessionType = this.capture ? 'play-and-record' : 'playback';
+    try {
+      if (s.type !== want) s.type = want;
+    } catch {
+      // Not supported here.
+    }
+  }
+
+  private create(): void {
+    if (this.ctx) return;
     const AC: typeof AudioContext | undefined =
       window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;
@@ -75,17 +171,40 @@ export class Sound {
     this.music.setVolume(w.volume);
     this.music.setEnabled(w.on);
     this.music.setMood(w.mood);
-    if (w.id) this.music.play(w.id, w.bar);
+    if (w.start) this.beginPlaylist();
+  }
+
+  /** The first track is random, and never the one the last visit started with. */
+  private beginPlaylist(): void {
+    const m = this.music;
+    if (!m || this.playlistBegun) return;
+    this.playlistBegun = true;
+    const KEY = 'iamspacepilot.firstTrack';
+    let last = '';
+    try {
+      last = localStorage.getItem(KEY) ?? '';
+    } catch {
+      // Storage may be blocked.
+    }
+    m.start(last);
+    try {
+      if (m.current) localStorage.setItem(KEY, m.current.id);
+    } catch {
+      // Storage may be blocked.
+    }
   }
 
   // ---- music ----
 
-  /** Plays a music track: a level id (starting at the build-up), 'menu' or 'intro'. */
-  playMusic(id: string): void {
-    const bar = id === 'menu' || id === 'intro' ? 0 : 4;
-    this.musicWanted.id = id;
-    this.musicWanted.bar = bar;
-    this.music?.play(id, bar);
+  /** Starts the playlist (once); it then plays on through every screen. */
+  startMusic(): void {
+    this.musicWanted.start = true;
+    this.beginPlaylist();
+  }
+
+  /** Next track of the playlist. */
+  nextTrack(): void {
+    this.music?.next();
   }
 
   setMusicEnabled(on: boolean): void {
@@ -109,13 +228,16 @@ export class Sound {
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
   }
 
-  /** Pauses all audio (menus, hidden tab). */
+  /** Pauses all audio (hidden tab). */
   suspend(): void {
     if (this.ctx && this.ctx.state === 'running') void this.ctx.suspend();
+    this.keepAlive?.pause();
   }
 
   resume(): void {
-    if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume();
+    const ctx = this.ctx;
+    if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') void ctx.resume().catch(() => undefined);
+    if (this.keepAlive?.paused) void this.keepAlive.play().catch(() => undefined);
   }
 
   startEngine(): void {

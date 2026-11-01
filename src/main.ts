@@ -24,7 +24,7 @@ import type { RoundResult } from './online/match';
 import { OnlineSession, type SessionEvents } from './online/session';
 import { ShipPreviews } from './render/preview';
 import { MenuStage } from './render/stage';
-import { GameView } from './render/view';
+import { GameView, VIEW_NAMES, VIEW_ORDER } from './render/view';
 import { addLocalScore, loadProfile, saveProfile, type Profile } from './storage/profile';
 import { Hud } from './ui/hud';
 import { Menu, formatScore, type MenuScreen, type ResultInfo } from './ui/menu';
@@ -84,12 +84,19 @@ class App {
     const $ = (id: string) => document.getElementById(id) as HTMLElement;
     this.touch = new TouchControls($('touch'));
     this.touch.hide();
-    this.hud = new Hud($('hud'), () => this.pause(), () => this.cheat());
+    this.hud = new Hud($('hud'), () => this.pause(), () => this.cheat(), () => this.cycleView());
     this.hud.hide();
     this.input = new InputManager(this.touch, () => this.togglePause(), () => this.cheat(), () => this.toggleMusic());
+    this.input.onView = () => this.cycleView();
+    this.input.onLook = (z, yaw, pitch) => this.look(z, yaw, pitch);
+    this.touch.onLook = (z, yaw, pitch) => this.look(z, yaw, pitch);
+    this.touch.onLookReset = () => this.view?.resetLook();
     this.musicButton = this.makeMusicButton();
     this.sound.onTrack = (name) => this.showTrack(name);
-    this.sound.playMusic('menu');
+    // Music starts straight away where the browser allows it, otherwise with the first tap or key.
+    this.sound.init();
+    this.sound.startMusic();
+    this.blockZoom();
     this.hud.specialButton = this.touch.specialButton;
     this.menu = new Menu($('menu'), this.profile, {
       launch: () => this.launch(),
@@ -126,6 +133,7 @@ class App {
 
     try {
       this.view = new GameView($('scene') as HTMLCanvasElement);
+      this.view.setCockpitScreens(this.hud.cockpitLeft, this.hud.cockpitRight, this.hud.radarCanvas);
     } catch {
       this.view = null;
     }
@@ -145,6 +153,7 @@ class App {
       if (this.state === 'playing' && !this.touch.visible) {
         this.touch.show();
         this.hud.setTouch(true);
+        this.view?.setTouchLayout(true);
       }
     });
 
@@ -162,9 +171,7 @@ class App {
         this.stage = null;
       }
       this.showLevel = Math.floor(Math.random() * LEVEL_ORDER.length);
-      this.sound.playMusic('intro');
       this.menu.showIntro(() => {
-        this.sound.playMusic('menu');
         this.menu.show(this.profile.callsign ? 'main' : 'callsign');
         if (/^[A-Z0-9]{5}$/.test(code)) this.menu.joinFromLink(code);
       });
@@ -220,6 +227,7 @@ class App {
     if (isTouchDevice()) this.touch.show();
     else this.touch.hide();
     this.hud.setTouch(this.touch.visible);
+    this.startView();
     this.input.reset();
     this.input.capturing = true;
     this.acc = 0;
@@ -227,9 +235,67 @@ class App {
     this.state = 'playing';
     this.sound.resume();
     this.sound.startEngine();
-    this.sound.playMusic(this.world.spec.id);
     this.goFullscreen();
     this.requestWakeLock();
+  }
+
+  // ---- camera views ----
+
+  /** Every round starts with the view from behind the ship. */
+  private startView(): void {
+    this.view?.setView('chase');
+    this.view?.setTouchLayout(this.touch.visible);
+    this.hud.setView('normal');
+  }
+
+  /** Eye button, V or the gamepad's back button: the next camera view. */
+  private cycleView(): void {
+    const view = this.view;
+    if (!view || !this.world || this.state === 'menu') return;
+    const mode = view.nextView();
+    this.hud.setView(this.hudView(), `${VIEW_ORDER.indexOf(mode) + 1}/${VIEW_ORDER.length} · ${VIEW_NAMES[mode]}`);
+    this.sound.click();
+  }
+
+  /** Which parts of the HUD the current view keeps. */
+  private hudView(): 'normal' | 'cockpit' | 'clean' {
+    const view = this.view;
+    if (!view) return 'normal';
+    if (view.view === 'clean') return 'clean';
+    if (view.view === 'cockpit') {
+      const g = this.world?.gliders[this.local];
+      return g?.alive ? 'cockpit' : 'normal';
+    }
+    return 'normal';
+  }
+
+  /** Pinch, drag, wheel or right stick: zoom and look around the ship. */
+  private look(zoomMul: number, dYaw: number, dPitch: number): void {
+    if (!this.world || (this.state !== 'playing' && this.state !== 'ending')) return;
+    this.view?.look(zoomMul, dYaw, dPitch);
+  }
+
+  /** The HUD after the frame: cockpit screens and which parts are shown. */
+  private afterHud(): void {
+    this.hud.setView(this.hudView());
+    const d = this.hud.cockpitDirty;
+    if (d.side || d.radar) this.view?.refreshCockpit(d.side, d.radar);
+    d.side = false;
+    d.radar = false;
+  }
+
+  /** Phones and tablets must not zoom the page: not with a double tap, not with two fingers. */
+  private blockZoom(): void {
+    const stop = (e: Event) => e.preventDefault();
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, stop, { passive: false });
+    document.addEventListener(
+      'touchmove',
+      (e) => {
+        if (e.touches.length > 1) e.preventDefault();
+      },
+      { passive: false },
+    );
+    document.addEventListener('dblclick', stop, { passive: false });
   }
 
   /** Menu screen changed: ship stage behind it, and the worlds behind the start screen. */
@@ -270,7 +336,7 @@ class App {
     b.type = 'button';
     b.className = 'music-btn';
     b.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.6" fill="currentColor"/><circle cx="17.5" cy="16" r="2.6" fill="currentColor"/><path class="off" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.6" fill="currentColor"/><circle cx="17.5" cy="16" r="2.6" fill="currentColor"/><path class="off" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span class="music-lbl">Music on</span>';
     b.addEventListener('click', (e) => {
       e.stopPropagation();
       this.sound.unlock();
@@ -303,6 +369,8 @@ class App {
     b.setAttribute('aria-pressed', String(on));
     b.setAttribute('aria-label', on ? 'Music on (M)' : 'Music off (M)');
     b.title = on ? 'Music on (M)' : 'Music off (M)';
+    const lbl = b.querySelector('.music-lbl');
+    if (lbl) lbl.textContent = on ? 'Music on' : 'Music off';
   }
 
   /** Shows the name of a new music track for a moment. */
@@ -378,7 +446,6 @@ class App {
     this.input.capturing = false;
     this.sound.stopEngine();
     this.sound.resume();
-    this.sound.playMusic('menu');
     this.hud.hide();
     this.touch.hide();
     this.view?.clear();
@@ -425,6 +492,7 @@ class App {
     view.render(this.acc / DT, dt);
     const portrait = isTouchDevice() && window.innerHeight > window.innerWidth;
     this.hud.update(w, PLAYER, dt, portrait, this.solo ? liveScore(w, PLAYER, this.solo.difficulty) : 0);
+    this.afterHud();
     const g = w.gliders[PLAYER];
     if (g.alive && w.phase !== 'countdown') {
       this.sound.updateEngine(g.speed, g.boosting, g.wallDist, this.hud.boundaryDist);
@@ -765,6 +833,7 @@ class App {
     this.touch.setTalking(this.talkToggle);
     this.touch.setSpectating(false);
     this.hud.setTouch(this.touch.visible);
+    this.startView();
     this.input.reset();
     this.input.capturing = true;
     this.acc = 0;
@@ -773,7 +842,6 @@ class App {
     this.state = 'playing';
     this.sound.resume();
     this.sound.startEngine();
-    this.sound.playMusic(w.spec.id);
     this.goFullscreen();
     this.requestWakeLock();
     const g = w.gliders[local];
@@ -848,7 +916,7 @@ class App {
     this.resultsAt = 0;
     this.endAt = 0;
     this.menu.showList(notice);
-    this.sound.playMusic('menu');
+    this.sound.setCapture(false);
     this.releaseWakeLock();
   }
 
@@ -862,6 +930,8 @@ class App {
     const want = this.input.talkHeld() || this.talkToggle || touchTalk;
     if (want === this.lastTalk) return;
     this.lastTalk = want;
+    // iPhone: the microphone needs a recording audio session, set before the mic opens.
+    if (want) this.sound.setCapture(true);
     s.setTalking(want);
     this.sound.radio(want);
   }
@@ -878,6 +948,7 @@ class App {
     view.render(this.acc / DT, dt);
     const portrait = isTouchDevice() && window.innerHeight > window.innerWidth;
     this.hud.update(w, this.local, dt, portrait, s.match.round);
+    this.afterHud();
     const g = w.gliders[this.local];
     if (g.alive && w.phase !== 'countdown') {
       this.sound.updateEngine(g.speed, g.boosting, g.wallDist, this.hud.boundaryDist);
