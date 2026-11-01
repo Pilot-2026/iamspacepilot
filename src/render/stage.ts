@@ -7,8 +7,10 @@ import { sharedTextures } from './textures';
  * The stage behind the menus: a transparent 3D layer between the yellow
  * background and the menu text, so ships never cover any words.
  *
- * intro: the four ships fly at the viewer, roll, fire and leave walls of light.
- * menu: small ships cross the screen now and then; their trails fade quickly.
+ * intro: the four ships fly at the viewer, roll, fire and leave walls of light;
+ * while the finished title waits for a tap, more ships keep crossing.
+ * menu: ships cross the screen now and then, their trails fade quickly; now
+ * and then one comes straight at the viewer and flashes past, huge.
  */
 
 export type StageMode = 'off' | 'intro' | 'menu';
@@ -121,6 +123,8 @@ interface Flyer {
   trail: Trail;
   fire: number[];
   scale: number;
+  /** Comes straight at the viewer. */
+  flyby?: boolean;
 }
 
 interface Bolt {
@@ -131,6 +135,8 @@ interface Bolt {
 }
 
 const INTRO_COLORS: Record<ShipId, number> = { trident: 0xffd23d, manta: 0x5ad1ff, halo: 0xff4fd8, bulwark: 0x7dffb0 };
+/** The intro choreography is over by then; afterwards ships keep coming while the title waits. */
+const INTRO_END = 7.6;
 const MENU_TRAILS = [0x0a0a0a, 0xff2d55, 0x7b2dff, 0x0050ff, 0x00a86b, 0xff6a00];
 
 export class MenuStage {
@@ -206,7 +212,7 @@ export class MenuStage {
     this.camera.updateProjectionMatrix();
   }
 
-  private makeFlyer(id: ShipId, curve: THREE.Curve<THREE.Vector3>, t0: number, dur: number, trailColor: number, intro: boolean): Flyer {
+  private makeFlyer(id: ShipId, curve: THREE.Curve<THREE.Vector3>, t0: number, dur: number, trailColor: number, intro: boolean, scale = 1): Flyer {
     const glow = intro ? INTRO_COLORS[id] : 0xffe45c;
     const ship = makeShip(id, glow, sharedTextures().glow);
     let outline: THREE.Mesh | null = null;
@@ -219,10 +225,11 @@ export class MenuStage {
       for (const f of ship.flames) f.visible = false;
     }
     ship.group.visible = false;
+    ship.group.scale.setScalar(scale);
     this.scene.add(ship.group);
-    const trail = intro ? new Trail(trailColor, 140, 2.2, 2.6, true) : new Trail(trailColor, 50, 1.1, 0.7, false);
+    const trail = intro ? new Trail(trailColor, 140, 2.2, 2.6 * scale, true) : new Trail(trailColor, 50, 1.1, 0.7 * scale, false);
     this.scene.add(trail.mesh);
-    return { ship, outline, curve, t0, dur, roll: 0, rollFrom: 0, rollTo: 0, trail, fire: [], scale: 1 };
+    return { ship, outline, curve, t0, dur, roll: 0, rollFrom: 0, rollTo: 0, trail, fire: [], scale };
   }
 
   // ---------- intro ----------
@@ -270,20 +277,24 @@ export class MenuStage {
 
   // ---------- menu ----------
 
-  private spawnMenuFlyer(): void {
-    const d = 110 + Math.random() * 90;
+  /** A ship crossing the screen from one side to the other. In the menus they are twice the old size. */
+  private spawnCrosser(intro: boolean): void {
+    const scale = intro ? 1.4 : 2;
+    const d = (110 + Math.random() * 90) * (intro ? 1 : 0.9);
     const halfH = d * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
     const halfW = halfH * this.camera.aspect;
     const side = Math.random() < 0.5 ? -1 : 1;
     const y0 = (Math.random() * 2 - 1) * halfH * 0.85;
     const y1 = (Math.random() * 2 - 1) * halfH * 0.85;
-    const start = new THREE.Vector3(side * (halfW + 25), y0, -d + (Math.random() * 40 - 20));
-    const end = new THREE.Vector3(-side * (halfW + 25), y1, -d + (Math.random() * 60 - 30));
+    const c = this.camera.position;
+    const start = new THREE.Vector3(side * (halfW + 35), y0, -d + (Math.random() * 40 - 20)).add(c);
+    const end = new THREE.Vector3(-side * (halfW + 35), y1, -d + (Math.random() * 60 - 30)).add(c);
     const mid = start.clone().lerp(end, 0.5).add(new THREE.Vector3(0, (Math.random() * 2 - 1) * halfH * 0.5, (Math.random() * 2 - 1) * 40));
     const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
     const id = SHIP_ORDER[Math.floor(Math.random() * SHIP_ORDER.length)];
-    const dur = curve.getLength() / (38 + Math.random() * 20);
-    const f = this.makeFlyer(id, curve, this.time, dur, MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)], false);
+    const dur = curve.getLength() / (44 + Math.random() * 24);
+    const trail = intro ? INTRO_COLORS[id] : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
+    const f = this.makeFlyer(id, curve, this.time, dur, trail, intro, scale);
     if (Math.random() < 0.4) {
       f.roll = (Math.random() < 0.5 ? -1 : 1) * 5;
       f.rollFrom = this.time + dur * 0.3;
@@ -291,6 +302,41 @@ export class MenuStage {
     }
     if (Math.random() < 0.5) f.fire = [this.time + dur * (0.35 + Math.random() * 0.3)];
     this.flyers.push(f);
+  }
+
+  /** A ship far ahead that comes straight at the viewer, rolls, fires and flashes past just beside the camera. */
+  private spawnFlyby(intro: boolean): void {
+    const c = this.camera.position;
+    const sx = Math.random() < 0.5 ? -1 : 1;
+    const sy = Math.random() < 0.5 ? -1 : 1;
+    const P = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z).add(c);
+    const curve = new THREE.CatmullRomCurve3(
+      [
+        P(sx * (30 + Math.random() * 40), sy * (10 + Math.random() * 25), -420),
+        P(sx * (8 + Math.random() * 8), sy * (3 + Math.random() * 5), -110),
+        P(sx * (4.5 + Math.random() * 2), sy * (1.6 + Math.random()), -14),
+        P(sx * 9, sy * 4, 26),
+      ],
+      false,
+      'centripetal',
+    );
+    const id = SHIP_ORDER[Math.floor(Math.random() * SHIP_ORDER.length)];
+    const dur = 2.3 + Math.random() * 0.6;
+    const trail = intro ? INTRO_COLORS[id] : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
+    const f = this.makeFlyer(id, curve, this.time, dur, trail, intro, 1);
+    f.roll = (Math.random() < 0.5 ? -1 : 1) * (2.5 + Math.random() * 2.5);
+    f.rollFrom = this.time + dur * 0.15;
+    f.rollTo = this.time + dur;
+    f.fire = [0.35, 0.45, 0.55].map((k) => this.time + dur * k);
+    f.flyby = true;
+    this.flyers.push(f);
+  }
+
+  /** Every few seconds a new ship: mostly crossing, sometimes coming straight at you. */
+  private spawnSome(intro: boolean): void {
+    const flyby = this.flyers.some((f) => f.flyby);
+    if (!flyby && Math.random() < 0.24) this.spawnFlyby(intro);
+    else this.spawnCrosser(intro);
   }
 
   // ---------- frame ----------
@@ -306,9 +352,12 @@ export class MenuStage {
     if (this.mode === 'menu') {
       this.camera.position.set(0, 0, 0);
       this.camera.lookAt(0, 0, -1);
+    }
+    // In the menus all the time; in the intro once the choreography is over and the title waits.
+    if (this.mode === 'menu' || now > INTRO_END) {
       this.nextSpawn -= dt;
       if (this.nextSpawn <= 0 && this.flyers.length < 3) {
-        this.spawnMenuFlyer();
+        this.spawnSome(this.mode === 'intro');
         this.nextSpawn = 1.6 + Math.random() * 2.4;
       }
     }
@@ -333,12 +382,12 @@ export class MenuStage {
       g.lookAt(p.x + tan.x, p.y + tan.y, p.z + tan.z);
       if (f.roll && now > f.rollFrom) g.rotateZ(f.roll * (Math.min(now, f.rollTo) - f.rollFrom));
       // Trail from the tail, using the ship's up direction like the walls in the game.
-      const tail = FWD.clone().applyQuaternion(g.quaternion).multiplyScalar(-3).add(g.position);
+      const tail = FWD.clone().applyQuaternion(g.quaternion).multiplyScalar(-3 * f.scale).add(g.position);
       const up = UP.clone().applyQuaternion(g.quaternion);
       f.trail.push(tail, up, now);
       while (f.fire.length && now >= f.fire[0]) {
         f.fire.shift();
-        this.shoot(g, this.mode === 'intro' ? 0xfff2a8 : 0x0a0a0a);
+        this.shoot(g, this.mode === 'intro' ? 0xfff2a8 : 0x0a0a0a, f.scale);
       }
       for (const fl of f.ship.flames) fl.scale.setScalar(f.ship.flame * (0.9 + Math.random() * 0.25));
     }
@@ -367,7 +416,7 @@ export class MenuStage {
     r.render(this.scene, this.camera);
   }
 
-  private shoot(g: THREE.Object3D, color: number): void {
+  private shoot(g: THREE.Object3D, color: number, scale = 1): void {
     const dir = FWD.clone().applyQuaternion(g.quaternion);
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -378,8 +427,8 @@ export class MenuStage {
         blending: this.mode === 'intro' ? THREE.AdditiveBlending : THREE.NormalBlending,
       }),
     );
-    sprite.scale.setScalar(this.mode === 'intro' ? 3.5 : 2.4);
-    sprite.position.copy(g.position).addScaledVector(dir, 4);
+    sprite.scale.setScalar((this.mode === 'intro' ? 3.5 : 2.4) * scale);
+    sprite.position.copy(g.position).addScaledVector(dir, 4 * scale);
     this.scene.add(sprite);
     this.bolts.push({ sprite, v: dir.multiplyScalar(160), age: 0, life: this.mode === 'intro' ? 0.9 : 0.6 });
   }

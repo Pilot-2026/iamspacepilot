@@ -30,8 +30,15 @@ export class InputManager {
   private ky = 0;
   private kr = 0;
   private padPause = false;
+  private padView = false;
   /** Left mouse button held on the 3D view. */
   private mouseFire = false;
+  /** Right mouse button dragging the camera around the ship. */
+  private dragLook: { x: number; y: number } | null = null;
+  /** V or the gamepad's back button: next camera view. */
+  onView: () => void = () => undefined;
+  /** Camera: zoom factor (< 1 comes closer), turn and tilt in radians. */
+  onLook: (zoomMul: number, dYaw: number, dPitch: number) => void = () => undefined;
   private readonly out: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false, special: false };
 
   private readonly cheatTaps: number[] = [];
@@ -51,6 +58,10 @@ export class InputManager {
       }
       if (e.code === 'KeyM' && !e.repeat) {
         this.onMusicKey();
+        return;
+      }
+      if (e.code === 'KeyV' && !e.repeat && this.capturing && !e.metaKey && !e.ctrlKey) {
+        this.onView();
         return;
       }
       if ((e.code === 'Digit1' || e.code === 'Numpad1') && !e.repeat) {
@@ -83,7 +94,37 @@ export class InputManager {
     });
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this.mouseFire = false;
+      if (e.button === 2) this.dragLook = null;
     });
+    // Right mouse button drags the camera around the ship, the wheel (or a trackpad pinch) zooms.
+    const onView = (t: EventTarget | null) => {
+      const id = (t as HTMLElement | null)?.id;
+      return id === 'scene' || id === 'touch';
+    };
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 2 && this.capturing && onView(e.target)) this.dragLook = { x: e.clientX, y: e.clientY };
+    });
+    window.addEventListener('mousemove', (e) => {
+      const d = this.dragLook;
+      if (!d) return;
+      const unit = Math.PI / Math.max(320, Math.min(window.innerWidth, window.innerHeight));
+      this.onLook(1, -(e.clientX - d.x) * unit * 1.3, (e.clientY - d.y) * unit);
+      d.x = e.clientX;
+      d.y = e.clientY;
+    });
+    window.addEventListener('contextmenu', (e) => {
+      if (onView(e.target)) e.preventDefault();
+    });
+    window.addEventListener(
+      'wheel',
+      (e) => {
+        if (!this.capturing || !onView(e.target)) return;
+        e.preventDefault();
+        const k = e.ctrlKey ? 0.012 : 0.0015;
+        this.onLook(Math.exp(Math.max(-60, Math.min(60, e.deltaY * (e.deltaMode === 1 ? 33 : 1))) * k), 0, 0);
+      },
+      { passive: false },
+    );
   }
 
   /** True while flying: arrow keys and space must not scroll the page. */
@@ -93,6 +134,7 @@ export class InputManager {
     this.keys.clear();
     this.metaHeld = false;
     this.mouseFire = false;
+    this.dragLook = null;
     this.kx = 0;
     this.ky = 0;
     this.kr = 0;
@@ -140,9 +182,15 @@ export class InputManager {
     let pf = false;
     let ps = false;
     let pause = false;
+    let view = false;
+    let lx = 0;
+    let ly = 0;
     const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
     for (const pad of pads) {
       if (!pad) continue;
+      if (pad.buttons[8]?.pressed) view = true;
+      lx += dead(pad.axes[2] ?? 0);
+      ly += dead(pad.axes[3] ?? 0);
       px += dead(pad.axes[0] ?? 0);
       py -= dead(pad.axes[1] ?? 0);
       if (pad.buttons[4]?.pressed) pr -= 1;
@@ -154,6 +202,10 @@ export class InputManager {
     }
     if (pause && !this.padPause) this.onPauseKey();
     this.padPause = pause;
+    if (view && !this.padView && this.capturing) this.onView();
+    this.padView = view;
+    // The right stick looks around the ship.
+    if (lx || ly) this.onLook(1, -lx * 2.2 * dt, ly * 1.6 * dt);
 
     const t = this.touch.state;
     const sy = clamp(this.ky + py + t.steerY, -1, 1);

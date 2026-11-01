@@ -796,7 +796,7 @@ export class Menu {
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span>v0.9 · Crazy worlds</span><span>Fly free. Leave light behind.</span>`,
+      `<span>v0.10 · Eight views</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
@@ -849,6 +849,7 @@ export class Menu {
       <p class="m-text">The wall turns with your glider. Fly level and it stands upright. Roll 90° and it lies flat like a floor. Keep rolling and it twists into a spiral. Fly close along a wall to recharge your boost.</p>
       <p class="m-text">Your gun fires shots that fly straight through walls and only hit other ships. They curve a little towards a ship in front of them. Three hits bring a ship down (the Bulwark takes five). Hold the trigger too long and the gun overheats.</p>
       <p class="m-text">Every level has obstacles in the arena: sky islands, spires, turbine rings, asteroids and more, and many of them move. Flying into one is deadly and shots fizzle on them. The radar shows their shape, and a warning appears when you get close.</p>
+      <p class="m-text">The eye button (or <kbd>V</kbd>) switches the camera: behind the ship, cockpit, rear three-quarter, front, top, below, far away and a clean view with nothing but the controls. Every round starts behind the ship. Two fingers zoom and turn the camera; a quick two-finger tap puts it back.</p>
       <p class="m-text">Every ship has a special ability on <kbd>C</kbd> that recharges after use. Bonus rings give boost and the bonus they show: triple shot, big wall, shield, cool gun, turbo, seeker shots or a repair.</p>
       <div class="keys-wrap">
         <table class="keys">
@@ -861,6 +862,8 @@ export class Menu {
             <tr><td>Boost</td><td><kbd>⌘ Command</kbd> or <kbd>Shift</kbd></td><td>RT or A</td><td>Boost button</td></tr>
             <tr><td>Special ability</td><td><kbd>C</kbd></td><td>B</td><td>Special button</td></tr>
             <tr><td>Talk (online)</td><td>Hold <kbd>R</kbd></td><td>Y or d-pad up</td><td>Mic button</td></tr>
+            <tr><td>Camera view</td><td><kbd>V</kbd> or the eye button</td><td>Back</td><td>Eye button</td></tr>
+            <tr><td>Zoom, look around</td><td>Mouse wheel, right mouse button</td><td>Right stick</td><td>Two fingers: pinch, drag</td></tr>
             <tr><td>Pause</td><td><kbd>Esc</kbd> or <kbd>P</kbd></td><td>Start</td><td>II button</td></tr>
           </tbody>
         </table>
@@ -889,7 +892,7 @@ export class Menu {
         <div class="m-row"><span class="lbl">Auto-horizon</span>${seg('assist', [['off', 'Off'], ['on', 'On']], s.autoHorizon ? 'on' : 'off')}</div>
         <div class="m-row"><span class="lbl">Graphics</span>${seg('quality', [['auto', 'Auto'], ['low', 'Low'], ['high', 'High']], s.quality)}</div>
       </div>
-      <p class="m-hint">Flight mode steers like a plane: arrow up (or stick forward) lowers the nose. Auto-horizon levels your ship slowly when you are not rolling. Music: twelve tracks, one for every level; press M or the music button to switch it on or off at any time.</p>
+      <p class="m-hint">Flight mode steers like a plane: arrow up (or stick forward) lowers the nose. Auto-horizon levels your ship slowly when you are not rolling. Music: twelve tracks play one after another in a random order and keep going through menus and games; press M or the music button to switch it on or off at any time.</p>
       <div class="m-list"><button class="mi" data-act="back">Back ${ARROW}</button></div>`,
     );
   }

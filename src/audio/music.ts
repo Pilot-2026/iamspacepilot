@@ -1,10 +1,11 @@
 /**
  * Electronic background music, made live with the Web Audio API: no files to
- * download. Twelve tracks, one for every level plus the menu and the intro.
- * Each track is a small recipe (tempo, key, chords, drum and bass style);
- * the arrangement moves through intro, build, drop and break sections, and
- * the mood of the game (menu, countdown, flight, crash, pause) opens or
- * closes a filter over the whole mix.
+ * download. Twelve tracks play one after another as a playlist in a random
+ * order (a new order on every visit) and keep running through menus, games
+ * and restarts. Each track is a small recipe (tempo, key, chords, drum and
+ * bass style); the arrangement moves through intro, build, drop and break
+ * sections, and the mood of the game (menu, countdown, flight, crash, pause)
+ * opens or closes a filter over the whole mix.
  */
 
 export type Mood = 'menu' | 'countdown' | 'flight' | 'boost' | 'down' | 'pause';
@@ -60,6 +61,22 @@ export const TRACKS: readonly TrackDef[] = [
 ];
 
 const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
+
+/** How many bars a track plays before the next one comes in: two full arrangements, about two minutes. */
+export function trackBars(def: TrackDef): number {
+  return def.bpm >= 150 ? 96 : 64;
+}
+
+/** The tracks in a random order; `avoid` does not come first. */
+export function shuffled(avoid: TrackDef | null = null, random: () => number = Math.random): TrackDef[] {
+  const list = [...TRACKS];
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  if (avoid && list[0] === avoid && list.length > 1) [list[0], list[1]] = [list[1], list[0]];
+  return list;
+}
 
 /** Small seeded random numbers for melodies. */
 function rng(seed: number): () => number {
@@ -133,6 +150,11 @@ export class TrackPlayer {
 
   get stepDur(): number {
     return 60 / this.def.bpm / 4;
+  }
+
+  /** The bar being scheduled now. */
+  get bar(): number {
+    return Math.floor(this.step / 16);
   }
 
   /** Schedules everything that starts before `until`. */
@@ -406,7 +428,7 @@ function snareAt(d: Drums, i: number): boolean {
   }
 }
 
-/** Plays the tracks: one at a time, cross-faded, through a mood filter and a volume control. */
+/** Plays the playlist: one track at a time, cross-faded, through a mood filter and a volume control. */
 export class Music {
   private readonly master: GainNode;
   private readonly mood: BiquadFilterNode;
@@ -416,8 +438,12 @@ export class Music {
   private timer = 0;
   private enabled = true;
   private volume = 0.6;
-  private wanted: string | null = null;
-  private wantedBar = 0;
+  /** The playlist and the track playing now. */
+  private order: TrackDef[] = [];
+  private pos = 0;
+  private started = false;
+  /** Where the track was when the music was switched off. */
+  private resumeBar = 0;
   /** Called when a new track starts, with its name. */
   onTrack: ((name: string) => void) | null = null;
 
@@ -451,40 +477,68 @@ export class Music {
     this.applyLevel();
   }
 
-  /** Plays the track with this id (a level id, 'menu' or 'intro'), from the given bar. */
-  play(id: string, startBar = 0): void {
-    this.wanted = id;
-    this.wantedBar = startBar;
-    if (!this.enabled) return;
-    if (this.player && this.player.def.id === id && !this.player.stopped) return;
-    const def = TRACKS.find((t) => t.id === id) ?? TRACKS[0];
-    if (this.player) {
-      const old = this.player;
-      old.fadeTo(0, 1.2);
-      old.stopped = true;
-      this.fading.push(old);
-      window.setTimeout(() => {
-        old.bus.disconnect();
-        const k = this.fading.indexOf(old);
-        if (k >= 0) this.fading.splice(k, 1);
-      }, 1600);
+  /** Starts the playlist once, with a random first track (not `avoid`). After that it simply keeps playing. */
+  start(avoid = ''): void {
+    if (this.started) return;
+    this.started = true;
+    this.order = shuffled(TRACKS.find((t) => t.id === avoid) ?? null);
+    this.pos = 0;
+    this.resumeBar = 0;
+    if (this.enabled) this.startTrack(0, 2);
+  }
+
+  /** The track playing now (or paused while the music is off). */
+  get current(): TrackDef | null {
+    return this.started ? this.order[this.pos] : null;
+  }
+
+  /** Skips to the next track of the playlist. */
+  next(): void {
+    if (!this.started) return;
+    this.pos++;
+    if (this.pos >= this.order.length) {
+      this.order = shuffled(this.order[this.order.length - 1]);
+      this.pos = 0;
     }
-    const p = new TrackPlayer(this.ctx, def, this.mood, this.send, this.noise, startBar);
-    p.fadeTo(1, 0.8);
+    this.resumeBar = 0;
+    if (this.enabled) this.startTrack(0, 2.5);
+  }
+
+  private startTrack(bar: number, fadeIn: number): void {
+    const def = this.order[this.pos];
+    this.fadeOut(5);
+    const p = new TrackPlayer(this.ctx, def, this.mood, this.send, this.noise, bar);
+    p.fadeTo(1, fadeIn);
     this.player = p;
     this.onTrack?.(def.name);
   }
 
+  /** Lets the current track fade away while it keeps playing. */
+  private fadeOut(seconds: number): void {
+    const old = this.player;
+    if (!old) return;
+    this.player = null;
+    old.fadeTo(0, seconds);
+    old.stopped = true;
+    this.fading.push(old);
+    window.setTimeout(() => {
+      old.bus.disconnect();
+      const k = this.fading.indexOf(old);
+      if (k >= 0) this.fading.splice(k, 1);
+    }, seconds * 1000 + 400);
+  }
+
   setEnabled(on: boolean): void {
+    if (on === this.enabled) return;
     this.enabled = on;
     if (!on && this.player) {
-      this.player.fadeTo(0, 0.4);
-      const old = this.player;
-      old.stopped = true;
-      window.setTimeout(() => old.bus.disconnect(), 600);
-      this.player = null;
-    } else if (on && this.wanted) {
-      this.play(this.wanted, this.wantedBar);
+      // Remember the place: switched on again, the track goes on from there.
+      this.resumeBar = Math.floor(this.player.bar / 4) * 4;
+      this.fadeOut(0.4);
+    } else if (on && this.started) {
+      const def = this.order[this.pos];
+      if (this.resumeBar >= trackBars(def)) this.next();
+      else this.startTrack(this.resumeBar, 1);
     }
     this.applyLevel();
   }
@@ -535,8 +589,13 @@ export class Music {
   private tick(): void {
     if (this.ctx.state !== 'running') return;
     const until = this.ctx.currentTime + 0.15;
-    this.player?.schedule(until);
-    for (const p of this.fading) p.schedule(until);
+    const p = this.player;
+    if (p) {
+      p.schedule(until);
+      // The track has played its length: the next one comes in while this one fades.
+      if (p.bar >= trackBars(p.def)) this.next();
+    }
+    for (const f of this.fading) f.schedule(until);
   }
 
   dispose(): void {

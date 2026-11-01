@@ -1,6 +1,8 @@
 /**
  * Touch controls: a floating stick appears wherever the left thumb lands.
  * Boost and the two roll buttons sit in an arc around the right thumb.
+ * Two fingers (not on a button) move the camera: pinch to zoom, drag to look
+ * around the ship, a quick two-finger tap puts the camera back.
  */
 export interface TouchState {
   steerX: number;
@@ -34,6 +36,16 @@ export class TouchControls {
   private oy = 0;
   private readonly holds = new Map<number, Hold>();
   private readonly radius = 54;
+  /** When the stick finger landed and where, to tell a stick from the start of a pinch. */
+  private stickAt = 0;
+  private stickMoved = 0;
+  /** Fingers that are neither the stick nor on a button. */
+  private readonly free = new Map<number, { x: number; y: number }>();
+  /** Two fingers moving the camera. */
+  private pinch: { a: number; b: number; pts: Map<number, { x: number; y: number }>; d: number; mx: number; my: number; at: number; moved: number } | null = null;
+  /** Camera: zoom factor (< 1 comes closer), turn and tilt in radians. */
+  onLook: (zoomMul: number, dYaw: number, dPitch: number) => void = () => undefined;
+  onLookReset: () => void = () => undefined;
 
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `
@@ -105,6 +117,8 @@ export class TouchControls {
   reset(): void {
     this.stickId = -1;
     this.holds.clear();
+    this.free.clear();
+    this.pinch = null;
     this.state.steerX = 0;
     this.state.steerY = 0;
     this.state.roll = 0;
@@ -142,8 +156,27 @@ export class TouchControls {
       this.applyHolds();
       return;
     }
+    const here = { x: e.clientX, y: e.clientY };
+    if (this.pinch) return;
+    // A second free finger, or a second finger right after the stick finger: that is a pinch.
+    const other = this.free.keys().next();
+    if (!other.done) {
+      const id = other.value;
+      this.startPinch(id, this.free.get(id) ?? here, e.pointerId, here);
+      this.free.delete(id);
+      return;
+    }
+    if (this.stickId !== -1 && performance.now() - this.stickAt < 260 && this.stickMoved < 14) {
+      const id = this.stickId;
+      const at = { x: this.ox, y: this.oy };
+      this.releaseStick();
+      this.startPinch(id, at, e.pointerId, here);
+      return;
+    }
     if (this.stickId === -1 && e.clientX < this.root.clientWidth * 0.55) {
       this.stickId = e.pointerId;
+      this.stickAt = performance.now();
+      this.stickMoved = 0;
       const r = this.root.getBoundingClientRect();
       this.ox = e.clientX;
       this.oy = e.clientY;
@@ -151,21 +184,71 @@ export class TouchControls {
       this.stick.style.top = `${e.clientY - r.top}px`;
       this.stick.classList.add('active');
       this.updateStick(e.clientX, e.clientY);
+      return;
     }
+    this.free.set(e.pointerId, here);
+  }
+
+  private startPinch(a: number, pa: { x: number; y: number }, b: number, pb: { x: number; y: number }): void {
+    const pts = new Map([
+      [a, { ...pa }],
+      [b, { ...pb }],
+    ]);
+    this.pinch = { a, b, pts, d: Math.max(1, Math.hypot(pa.x - pb.x, pa.y - pb.y)), mx: (pa.x + pb.x) / 2, my: (pa.y + pb.y) / 2, at: performance.now(), moved: 0 };
   }
 
   private move(e: PointerEvent): void {
-    if (e.pointerId === this.stickId) this.updateStick(e.clientX, e.clientY);
+    if (e.pointerId === this.stickId) {
+      this.stickMoved = Math.max(this.stickMoved, Math.hypot(e.clientX - this.ox, e.clientY - this.oy));
+      this.updateStick(e.clientX, e.clientY);
+      return;
+    }
+    const f = this.free.get(e.pointerId);
+    if (f) {
+      f.x = e.clientX;
+      f.y = e.clientY;
+      return;
+    }
+    const p = this.pinch;
+    const pt = p?.pts.get(e.pointerId);
+    if (!p || !pt) return;
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const pa = p.pts.get(p.a) as { x: number; y: number };
+    const pb = p.pts.get(p.b) as { x: number; y: number };
+    const d = Math.max(1, Math.hypot(pa.x - pb.x, pa.y - pb.y));
+    const mx = (pa.x + pb.x) / 2;
+    const my = (pa.y + pb.y) / 2;
+    const unit = Math.PI / Math.max(320, Math.min(window.innerWidth, window.innerHeight));
+    const dx = mx - p.mx;
+    const dy = my - p.my;
+    p.moved += Math.abs(d - p.d) + Math.hypot(dx, dy);
+    this.onLook(p.d / d, -dx * unit * 1.3, dy * unit);
+    p.d = d;
+    p.mx = mx;
+    p.my = my;
+  }
+
+  private releaseStick(): void {
+    this.stickId = -1;
+    this.state.steerX = 0;
+    this.state.steerY = 0;
+    this.knob.style.transform = '';
+    this.stick.classList.remove('active');
+    this.placeStickHome();
   }
 
   private up(e: PointerEvent): void {
-    if (e.pointerId === this.stickId) {
-      this.stickId = -1;
-      this.state.steerX = 0;
-      this.state.steerY = 0;
-      this.knob.style.transform = '';
-      this.stick.classList.remove('active');
-      this.placeStickHome();
+    if (e.pointerId === this.stickId) this.releaseStick();
+    this.free.delete(e.pointerId);
+    const p = this.pinch;
+    if (p && p.pts.has(e.pointerId)) {
+      // A quick two-finger tap puts the camera back to normal.
+      if (performance.now() - p.at < 320 && p.moved < 16) this.onLookReset();
+      const rest = p.a === e.pointerId ? p.b : p.a;
+      const pt = p.pts.get(rest);
+      this.pinch = null;
+      if (pt && e.type !== 'pointercancel') this.free.set(rest, pt);
     }
     if (this.holds.delete(e.pointerId)) this.applyHolds();
   }

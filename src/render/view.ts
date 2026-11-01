@@ -5,6 +5,7 @@ import { BIG_WALL, POWERS, type PowerId } from '../core/powerups';
 import { SHOCKWAVE_RADIUS } from '../core/ships';
 import type { LevelId } from '../core/types';
 import { RING_RADIUS, World } from '../core/world';
+import { Cockpit, COCKPIT_FOV } from './cockpit';
 import { makeObstacleView, type ObstacleView } from './obstacles';
 import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { createLevelEnv, type LevelEnv } from './levels';
@@ -16,6 +17,45 @@ THREE.ColorManagement.enabled = false;
 
 const FWD = new THREE.Vector3(0, 0, 1);
 const UP = new THREE.Vector3(0, 1, 0);
+
+/** Camera views, switched with the eye button (or V) in this order. */
+export type ViewMode = 'chase' | 'cockpit' | 'rear' | 'front' | 'top' | 'below' | 'far' | 'clean';
+export const VIEW_ORDER: readonly ViewMode[] = ['chase', 'cockpit', 'rear', 'front', 'top', 'below', 'far', 'clean'];
+export const VIEW_NAMES: Readonly<Record<ViewMode, string>> = {
+  chase: 'Chase',
+  cockpit: 'Cockpit',
+  rear: 'Rear three-quarter',
+  front: 'Front',
+  top: 'Top',
+  below: 'Below',
+  far: 'Far',
+  clean: 'Clean view',
+};
+
+/**
+ * Where the camera sits and looks, in the ship's frame (x left, y up, z forward),
+ * which way is up on screen, and how quickly the camera follows.
+ */
+interface Rig {
+  cam: THREE.Vector3;
+  look: THREE.Vector3;
+  up: 'ship' | 'fwd';
+  follow: number;
+}
+const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+const CHASE: Rig = { cam: v3(0, 4.2, -14), look: v3(0, 1.2, 14), up: 'ship', follow: 7 };
+const RIGS: Readonly<Record<Exclude<ViewMode, 'cockpit'>, Rig>> = {
+  chase: CHASE,
+  clean: CHASE,
+  rear: { cam: v3(-9, 5.5, -11), look: v3(0, 0.5, 9), up: 'ship', follow: 6 },
+  front: { cam: v3(0, 3, 16), look: v3(0, 0.6, -4), up: 'ship', follow: 7 },
+  top: { cam: v3(0, 30, -4), look: v3(0, 0, 5), up: 'fwd', follow: 6 },
+  below: { cam: v3(0, -26, -4), look: v3(0, 0, 5), up: 'fwd', follow: 6 },
+  far: { cam: v3(0, 24, -64), look: v3(0, 0, 24), up: 'ship', follow: 3 },
+};
+/** The pilot's eye inside the ship. */
+const SEAT = v3(0, 0.75, 0.85);
+const TURN = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI);
 
 interface PilotView {
   group: THREE.Group;
@@ -129,6 +169,18 @@ export class GameView {
   private fov = 66;
   private spectateAngle = 0;
   private snapCamera = true;
+  /** Current camera view, zoom (1 = normal, smaller = closer) and orbit around the ship. */
+  private viewMode: ViewMode = 'chase';
+  private zoom = 1;
+  private yaw = 0;
+  private pitch = 0;
+  private cockpit: Cockpit | null = null;
+  /** The cockpit was drawn last frame. */
+  private cockpitOn = false;
+  private touchLayout = false;
+  private readonly orbitQ = new THREE.Quaternion();
+  private readonly orbitE = new THREE.Euler(0, 0, 0, 'YXZ');
+  private readonly tv3 = new THREE.Vector3();
   private readonly camPos = new THREE.Vector3();
   private readonly camLook = new THREE.Vector3();
   private readonly camUp = new THREE.Vector3(0, 1, 0);
@@ -320,6 +372,7 @@ export class GameView {
     this.snapCamera = true;
     this.fov = 66;
     this.time = 0;
+    this.cockpit?.setStyle(this.pilots[player]?.color ?? 0x7af0ff, env.hemi[0], env.hemi[1], env.hemi[2]);
   }
 
   private addObstacles(world: World): void {
@@ -329,6 +382,64 @@ export class GameView {
       this.scene.add(v.obj);
       return v;
     });
+  }
+
+  // ---------- camera views ----------
+
+  get view(): ViewMode {
+    return this.viewMode;
+  }
+
+  /** Switches the camera view; zoom and orbit start fresh. */
+  setView(mode: ViewMode): void {
+    if ((mode === 'cockpit') !== (this.viewMode === 'cockpit')) this.snapCamera = true;
+    this.viewMode = mode;
+    this.resetLook();
+  }
+
+  /** The next view in the cycle. */
+  nextView(): ViewMode {
+    const i = VIEW_ORDER.indexOf(this.viewMode);
+    this.setView(VIEW_ORDER[(i + 1) % VIEW_ORDER.length]);
+    return this.viewMode;
+  }
+
+  /** Pinch and drag: zoom (multiplier, < 1 comes closer) and orbit around the ship (radians). */
+  look(zoomMul: number, dYaw: number, dPitch: number): void {
+    const cockpit = this.viewMode === 'cockpit';
+    this.zoom = THREE.MathUtils.clamp(this.zoom * zoomMul, cockpit ? 0.4 : 0.35, cockpit ? 1.4 : 3.2);
+    this.yaw += dYaw;
+    if (cockpit) this.yaw = THREE.MathUtils.clamp(this.yaw, -2.4, 2.4);
+    else if (this.yaw > Math.PI) this.yaw -= Math.PI * 2;
+    else if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + dPitch, cockpit ? -1 : -1.45, cockpit ? 1 : 1.45);
+  }
+
+  resetLook(): void {
+    this.zoom = 1;
+    this.yaw = 0;
+    this.pitch = 0;
+  }
+
+  /** With touch controls the cockpit screens move away from the thumbs. */
+  setTouchLayout(on: boolean): void {
+    this.touchLayout = on;
+  }
+
+  /** Canvases the HUD draws the cockpit screens into. */
+  setCockpitScreens(left: HTMLCanvasElement, right: HTMLCanvasElement, radar: HTMLCanvasElement): void {
+    this.cockpit ??= new Cockpit();
+    this.cockpit.setScreens(left, right, radar);
+  }
+
+  /** The HUD redrew the cockpit screens. */
+  refreshCockpit(side: boolean, radar: boolean): void {
+    if (this.cockpitOn) this.cockpit?.refresh(side, radar);
+  }
+
+  /** True while the camera sits in the cockpit. */
+  get inCockpit(): boolean {
+    return this.cockpitOn;
   }
 
   /** Remembers the current state so frames between ticks can be interpolated. */
@@ -454,7 +565,7 @@ export class GameView {
       pv.p.lerpVectors(pv.prevP, this.tv.set(g.p.x, g.p.y, g.p.z), alpha);
       pv.q.slerpQuaternions(pv.prevQ, this.tq.set(g.q.x, g.q.y, g.q.z, g.q.w), alpha);
       pv.qb.slerpQuaternions(pv.prevQb, this.tq.set(g.qb.x, g.qb.y, g.qb.z, g.qb.w), alpha);
-      pv.group.visible = g.alive;
+      pv.group.visible = g.alive && !(i === this.player && this.cockpitOn);
       pv.group.position.copy(pv.p);
       pv.group.quaternion.copy(pv.q);
       if (g.alive) this.shipEffects(w, i, dt);
@@ -511,51 +622,90 @@ export class GameView {
     this.updateDust(w);
 
     this.renderer.render(this.scene, this.camera);
+    const ck = this.cockpit;
+    if (this.cockpitOn && ck) {
+      const g = w.gliders[this.player];
+      ck.layout(this.camera.aspect, this.touchLayout);
+      ck.setHead(this.yaw, -this.pitch);
+      ck.update(dt, g.boosting);
+      // The cockpit is drawn over the world, so nothing outside can cut through it.
+      this.renderer.autoClear = false;
+      this.renderer.clearDepth();
+      this.renderer.render(ck.scene, ck.camera);
+      this.renderer.autoClear = true;
+    }
   }
 
   private updateCamera(w: World, dt: number): void {
     const g = w.gliders[this.player];
     const pv = this.pilots[this.player];
     const chase = g.alive || w.tick - g.crashTick < 50;
+    const cockpit = chase && g.alive && this.viewMode === 'cockpit' && !!this.cockpit;
+    if (cockpit !== this.cockpitOn) this.snapCamera = true;
+    this.cockpitOn = cockpit;
     const target = this.tv;
     const look = this.tv2;
-    let upTarget = UP;
+    const up = this.tv3;
     let k = 1 - Math.exp(-dt * 7);
-    if (chase) {
-      const f = new THREE.Vector3().copy(FWD).applyQuaternion(pv.qb);
-      const u = new THREE.Vector3().copy(UP).applyQuaternion(pv.qb);
-      target.copy(pv.p).addScaledVector(f, -14).addScaledVector(u, 4.2);
-      look.copy(pv.p).addScaledVector(f, 14).addScaledVector(u, 1.2);
-      upTarget = u;
-    } else {
-      this.spectateAngle += dt * 0.12;
-      const R = w.radius();
-      target.set(Math.cos(this.spectateAngle) * R * 0.95, 38, Math.sin(this.spectateAngle) * R * 0.95);
-      const leader = w.gliders.find((x) => x.alive);
-      if (leader) look.set(leader.p.x, leader.p.y, leader.p.z);
-      else look.set(0, 0, 0);
-      k = 1 - Math.exp(-dt * 1.5);
-    }
-    if (this.snapCamera) {
-      k = 1;
+    let upK = 1 - Math.exp(-dt * 5);
+    let fovTarget = 66;
+    if (cockpit) {
+      // Rigidly in the pilot's seat, banking with the ship; the head can turn.
+      target.copy(SEAT).applyQuaternion(pv.q).add(pv.p);
+      this.camPos.copy(target);
+      this.camera.position.copy(target);
+      this.orbitE.set(-this.pitch, this.yaw, 0, 'YXZ');
+      this.camera.quaternion.copy(pv.q).multiply(TURN).multiply(this.orbitQ.setFromEuler(this.orbitE));
+      this.camUp.copy(UP).applyQuaternion(pv.q);
       this.snapCamera = false;
-      this.camUp.copy(upTarget);
+      if (this.shake > 0) {
+        const s = this.shake * 0.5;
+        this.camera.position.x += (Math.random() - 0.5) * s;
+        this.camera.position.y += (Math.random() - 0.5) * s;
+        this.camera.position.z += (Math.random() - 0.5) * s;
+        this.shake = Math.max(0, this.shake - dt * 1.6);
+      }
+      fovTarget = COCKPIT_FOV * this.zoom + (g.boosting ? 6 : 0);
+    } else {
+      if (chase) {
+        const rig = RIGS[this.viewMode === 'cockpit' ? 'chase' : this.viewMode];
+        this.orbitE.set(this.pitch, this.yaw, 0, 'YXZ');
+        const oq = this.orbitQ.setFromEuler(this.orbitE);
+        target.copy(rig.cam).applyQuaternion(oq).multiplyScalar(this.zoom).applyQuaternion(pv.qb).add(pv.p);
+        look.copy(rig.look).applyQuaternion(oq).multiplyScalar(this.zoom).applyQuaternion(pv.qb).add(pv.p);
+        up.copy(rig.up === 'ship' ? UP : FWD).applyQuaternion(oq).applyQuaternion(pv.qb);
+        k = 1 - Math.exp(-dt * rig.follow);
+        if (g.boosting) fovTarget = 76;
+      } else {
+        this.spectateAngle += dt * 0.12;
+        const R = w.radius();
+        target.set(Math.cos(this.spectateAngle) * R * 0.95, 38, Math.sin(this.spectateAngle) * R * 0.95);
+        const leader = w.gliders.find((x) => x.alive);
+        if (leader) look.set(leader.p.x, leader.p.y, leader.p.z);
+        else look.set(0, 0, 0);
+        up.copy(UP);
+        k = 1 - Math.exp(-dt * 1.5);
+      }
+      if (this.snapCamera) {
+        k = 1;
+        upK = 1;
+        this.snapCamera = false;
+      }
+      this.camPos.lerp(target, k);
+      this.camLook.lerp(look, k);
+      this.camUp.lerp(up, upK).normalize();
+      this.camera.position.copy(this.camPos);
+      if (this.shake > 0) {
+        const s = this.shake * 0.9;
+        this.camera.position.x += (Math.random() - 0.5) * s;
+        this.camera.position.y += (Math.random() - 0.5) * s;
+        this.camera.position.z += (Math.random() - 0.5) * s;
+        this.shake = Math.max(0, this.shake - dt * 1.6);
+      }
+      this.camera.up.copy(this.camUp);
+      this.camera.lookAt(this.camLook);
     }
-    this.camPos.lerp(target, k);
-    this.camLook.lerp(look, k);
-    this.camUp.lerp(upTarget, 1 - Math.exp(-dt * 5)).normalize();
-    this.camera.position.copy(this.camPos);
-    if (this.shake > 0) {
-      const s = this.shake * 0.9;
-      this.camera.position.x += (Math.random() - 0.5) * s;
-      this.camera.position.y += (Math.random() - 0.5) * s;
-      this.camera.position.z += (Math.random() - 0.5) * s;
-      this.shake = Math.max(0, this.shake - dt * 1.6);
-    }
-    this.camera.up.copy(this.camUp);
-    this.camera.lookAt(this.camLook);
-    const fovTarget = chase && g.boosting ? 76 : 66;
-    const nf = this.fov + (fovTarget - this.fov) * (1 - Math.exp(-dt * 4));
+    const nf = this.fov + (fovTarget - this.fov) * (cockpit && Math.abs(fovTarget - this.fov) > 12 ? 1 : 1 - Math.exp(-dt * 4));
     if (Math.abs(nf - this.fov) > 0.01 || this.camera.fov !== nf) {
       this.fov = nf;
       this.camera.fov = nf;
