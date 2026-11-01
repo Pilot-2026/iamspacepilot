@@ -1,7 +1,10 @@
 import * as THREE from 'three';
-import { TAIL_OFFSET, TICK_RATE } from '../core/config';
+import { TAIL_OFFSET, TAPER_MIN, TICK_RATE, WALL_HALF } from '../core/config';
 import type { SimEvent } from '../core/types';
+import { BIG_WALL, POWERS, type PowerId } from '../core/powerups';
+import { SHOCKWAVE_RADIUS } from '../core/ships';
 import { RING_RADIUS, type World } from '../core/world';
+import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { createLevelEnv, type LevelEnv } from './levels';
 import { RibbonView } from './ribbon';
 import { sharedTextures } from './textures';
@@ -14,6 +17,11 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 interface PilotView {
   group: THREE.Group;
+  ship: ShipMesh;
+  /** Bubble of the shield power-up. */
+  shield: THREE.Mesh<THREE.IcosahedronGeometry, THREE.MeshBasicMaterial>;
+  /** Coloured glow while a power-up runs. */
+  aura: THREE.Sprite;
   ribbon: RibbonView;
   color: number;
   prevP: THREE.Vector3;
@@ -58,42 +66,34 @@ function teamPalette(colors: number[], team: number): number[] {
   return list.length ? list : [team === 0 ? 0xffb02e : 0x3dd6ff];
 }
 
-let gliderGeometry: THREE.BufferGeometry | null = null;
+const ICONS: Record<PowerId, string> = { triple: '×3', bigwall: '▲', shield: '◯', rapid: '∞', turbo: '»', seeker: '◎', repair: '+' };
+const iconCache = new Map<PowerId, THREE.Texture>();
 
-function gliderGeo(): THREE.BufferGeometry {
-  if (gliderGeometry) return gliderGeometry;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute(
-    'position',
-    new THREE.Float32BufferAttribute([0, 0, 2.6, -1.8, 0, -1.2, 1.8, 0, -1.2, 0, 0.5, -0.8, 0, -0.22, -0.9], 3),
-  );
-  geo.setIndex([0, 1, 3, 0, 3, 2, 0, 4, 1, 0, 2, 4, 1, 3, 4, 2, 4, 3]);
-  geo.computeVertexNormals();
-  gliderGeometry = geo;
-  return geo;
-}
-
-function makeGlider(color: number): THREE.Group {
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(
-    gliderGeo(),
-    new THREE.MeshStandardMaterial({ color: 0x161b28, metalness: 0.7, roughness: 0.3, flatShading: true, side: THREE.DoubleSide }),
-  );
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(gliderGeo()), new THREE.LineBasicMaterial({ color, fog: false }));
-  const glow = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: sharedTextures().glow,
-      color,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      fog: false,
-    }),
-  );
-  glow.position.set(0, 0.05, -1.1);
-  glow.scale.set(4, 4, 1);
-  group.add(body, edges, glow);
-  return group;
+/** Symbol of a power-up, drawn once into a texture. */
+function powerIcon(p: PowerId): THREE.Texture {
+  let t = iconCache.get(p);
+  if (t) return t;
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const x = c.getContext('2d');
+  if (x) {
+    const col = `#${POWERS[p].color.toString(16).padStart(6, '0')}`;
+    x.fillStyle = 'rgba(0,0,0,0.35)';
+    x.beginPath();
+    x.arc(64, 64, 58, 0, Math.PI * 2);
+    x.fill();
+    x.font = '800 64px Unbounded, Arial Black, sans-serif';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.shadowColor = col;
+    x.shadowBlur = 18;
+    x.fillStyle = '#ffffff';
+    x.fillText(ICONS[p], 64, 70);
+  }
+  t = new THREE.CanvasTexture(c);
+  iconCache.set(p, t);
+  return t;
 }
 
 /** Draws the world with three.js. Knows nothing about menus or input. */
@@ -109,6 +109,7 @@ export class GameView {
   private pilots: PilotView[] = [];
   private ringViews: THREE.Group[] = [];
   private readonly boltViews = new Map<number, BoltView>();
+  private waves: { mesh: THREE.Mesh<THREE.IcosahedronGeometry, THREE.MeshBasicMaterial>; age: number }[] = [];
   private readonly shotViews = new Map<number, ShotView>();
   private readonly shotGeo: THREE.CylinderGeometry;
   private readonly reticle: THREE.Sprite;
@@ -208,12 +209,28 @@ export class GameView {
         const list = teamPalette(env.colors, g.team);
         color = list[members[g.team & 1]++ % list.length];
       }
-      const group = makeGlider(color);
+      const ship = makeShip(g.ship.id, color, sharedTextures().glow);
+      const group = ship.group;
       if (i === player) group.scale.setScalar(1.05);
+      const shield = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(4.6, 1),
+        new THREE.MeshBasicMaterial({ color: POWERS.shield.color, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, wireframe: true }),
+      );
+      shield.visible = false;
+      group.add(shield);
+      const aura = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: sharedTextures().glow, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.5, fog: false }),
+      );
+      aura.scale.setScalar(12);
+      aura.visible = false;
+      group.add(aura);
       const ribbon = new RibbonView(color, env.wall);
       this.scene.add(group, ribbon.mesh);
       const pv: PilotView = {
         group,
+        ship,
+        shield,
+        aura,
         ribbon,
         color,
         prevP: new THREE.Vector3(g.p.x, g.p.y, g.p.z),
@@ -235,6 +252,11 @@ export class GameView {
           new THREE.MeshBasicMaterial({ color: env.ringColor, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending }),
         ),
       );
+      // The bonus inside the ring, as a symbol.
+      const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, fog: false }));
+      icon.scale.setScalar(6);
+      g.add(icon);
+      g.userData.power = '';
       this.scene.add(g);
       this.ringViews.push(g);
     }
@@ -263,6 +285,11 @@ export class GameView {
         this.crashAt(e.id);
       } else if (e.type === 'hit') {
         this.hitAt(e.id, e.by);
+      } else if (e.type === 'special' && e.kind === 'shockwave') {
+        this.shockwaveAt(e.id);
+      } else if (e.type === 'jam' || e.type === 'shield') {
+        const g = w.gliders[e.id];
+        this.spawnBurst(g.p.x, g.p.y, g.p.z, e.type === 'shield' ? POWERS.shield.color : 0xffffff, 0.25);
       } else if (e.type === 'bolt-strike') {
         this.flashLevel = 1;
       }
@@ -290,6 +317,65 @@ export class GameView {
     if (id === this.player) this.shake = 1;
   }
 
+  /** Engine flames, phase shimmer, shield bubble and power-up glow of glider i. */
+  private shipEffects(w: World, i: number, dt: number): void {
+    const g = w.gliders[i];
+    const pv = this.pilots[i];
+    const s = pv.ship;
+    const burner = g.ship.special.kind === 'afterburner' && w.tick < g.specialUntil;
+    const flicker = 0.9 + Math.random() * 0.2;
+    const size = s.flame * (g.boosting ? 1.7 : 1) * (burner ? 1.6 : 1) * flicker;
+    for (const f of s.flames) f.scale.setScalar(size);
+    const phase = w.phasing(g);
+    for (const m of s.solids) {
+      if (m.transparent !== phase) {
+        m.transparent = phase;
+        m.needsUpdate = true;
+      }
+      m.opacity = phase ? 0.3 + 0.15 * Math.sin(this.time * 30) : 1;
+    }
+    pv.shield.visible = g.shield;
+    if (g.shield) pv.shield.rotation.y += dt * 0.8;
+    const power = g.power && g.power !== 'shield' ? g.power : null;
+    pv.aura.visible = !!power;
+    if (power) {
+      pv.aura.material.color.setHex(POWERS[power].color);
+      pv.aura.material.opacity = 0.35 + 0.15 * Math.sin(this.time * 6);
+    }
+  }
+
+  /** Bulwark shockwave: an expanding shell where it went off. */
+  shockwaveAt(id: number): void {
+    const w = this.world;
+    const pv = this.pilots[id];
+    if (!w || !pv) return;
+    const g = w.gliders[id];
+    const mesh = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(1, 2),
+      new THREE.MeshBasicMaterial({ color: pv.color, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending, wireframe: true }),
+    );
+    mesh.position.set(g.p.x, g.p.y, g.p.z);
+    this.scene.add(mesh);
+    this.waves.push({ mesh, age: 0 });
+    this.spawnBurst(g.p.x, g.p.y, g.p.z, pv.color, 0.4);
+  }
+
+  private updateWaves(dt: number): void {
+    for (let k = this.waves.length - 1; k >= 0; k--) {
+      const wv = this.waves[k];
+      wv.age += dt;
+      const u = Math.min(1, wv.age / 0.6);
+      wv.mesh.scale.setScalar(2 + SHOCKWAVE_RADIUS * u);
+      wv.mesh.material.opacity = 0.6 * (1 - u);
+      if (u >= 1) {
+        this.scene.remove(wv.mesh);
+        wv.mesh.geometry.dispose();
+        wv.mesh.material.dispose();
+        this.waves.splice(k, 1);
+      }
+    }
+  }
+
   render(alpha: number, dt: number): void {
     const w = this.world;
     const env = this.env;
@@ -305,12 +391,14 @@ export class GameView {
       pv.group.visible = g.alive;
       pv.group.position.copy(pv.p);
       pv.group.quaternion.copy(pv.q);
+      if (g.alive) this.shipEffects(w, i, dt);
       if (g.alive) {
         const head = this.tv.copy(FWD).applyQuaternion(pv.q).multiplyScalar(-TAIL_OFFSET).add(pv.p);
         const up = this.tv2.copy(UP).applyQuaternion(pv.q);
-        pv.ribbon.sync(w.trails[i], w.phase === 'countdown' ? null : head, up, now);
+        const headHalf = (g.power === 'bigwall' ? WALL_HALF * BIG_WALL : WALL_HALF) * TAPER_MIN;
+        pv.ribbon.sync(w.trails[i], w.phase === 'countdown' ? null : head, up, now, w.tick, headHalf);
       } else {
-        pv.ribbon.sync(w.trails[i], null, null, now);
+        pv.ribbon.sync(w.trails[i], null, null, now, w.tick, 0);
       }
     });
 
@@ -318,10 +406,21 @@ export class GameView {
       const v = this.ringViews[k];
       v.visible = ring.active;
       if (!ring.active) return;
+      if (v.userData.power !== ring.power) {
+        v.userData.power = ring.power;
+        const color = POWERS[ring.power].color;
+        for (const c of v.children) {
+          if (c instanceof THREE.Mesh) (c.material as THREE.MeshBasicMaterial).color.setHex(color);
+        }
+        const icon = v.children[2] as THREE.Sprite;
+        icon.material.map = powerIcon(ring.power);
+        icon.material.needsUpdate = true;
+      }
       v.position.set(ring.c.x, ring.c.y, ring.c.z);
       v.lookAt(ring.c.x + ring.n.x, ring.c.y + ring.n.y, ring.c.z + ring.n.z);
       v.rotateZ(this.time * 0.6);
     });
+    this.updateWaves(dt);
 
     this.updateBolts(w);
     this.updateShots(w, alpha);
@@ -605,18 +704,23 @@ export class GameView {
     for (const pv of this.pilots) {
       this.scene.remove(pv.group, pv.ribbon.mesh);
       pv.ribbon.dispose();
-      pv.group.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.material) (m.material as THREE.Material).dispose();
-        if (o instanceof THREE.LineSegments) o.geometry.dispose();
-      });
+      disposeShip(pv.ship);
+      pv.shield.geometry.dispose();
+      pv.shield.material.dispose();
+      pv.aura.material.dispose();
     }
+    for (const wv of this.waves) {
+      this.scene.remove(wv.mesh);
+      wv.mesh.geometry.dispose();
+      wv.mesh.material.dispose();
+    }
+    this.waves = [];
     this.pilots = [];
     for (const r of this.ringViews) {
       this.scene.remove(r);
       r.traverse((o) => {
         const m = o as THREE.Mesh;
-        if (m.geometry) m.geometry.dispose();
+        if (m.geometry && !(o instanceof THREE.Sprite)) m.geometry.dispose();
         if (m.material) (m.material as THREE.Material).dispose();
       });
     }

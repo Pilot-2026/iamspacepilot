@@ -1,5 +1,6 @@
 import { boundaryDistance } from '../core/arena';
 import { V3 } from '../core/math';
+import { POWERS } from '../core/powerups';
 import type { World } from '../core/world';
 import { countTap } from '../input/input';
 import { formatScore, formatTime } from './menu';
@@ -33,7 +34,15 @@ export class Hud {
   private readonly heatFill: HTMLElement;
   private readonly gunLabel: HTMLElement;
   private readonly hullEl: HTMLElement;
-  private readonly hullPips: HTMLElement[];
+  private hullPips: HTMLElement[];
+  private readonly specEl: HTMLElement;
+  private readonly specFill: HTMLElement;
+  private readonly specName: HTMLElement;
+  private readonly powerEl: HTMLElement;
+  private readonly powerName: HTMLElement;
+  private readonly powerFill: HTMLElement;
+  /** Touch special button: shows the cooldown. */
+  specialButton: HTMLElement | null = null;
   private readonly hitMark: HTMLElement;
   private hitUntil = 0;
   private hurtUntil = 0;
@@ -58,6 +67,7 @@ export class Hud {
         <span class="h-k">Speed</span><span class="h-v" data-k="speed">0</span><span class="h-k">km/h</span>
         <div class="h-bar"><i></i></div><span class="h-k">Boost</span>
         <div class="h-gun"><span class="h-hull" aria-label="Hull"><i></i><i></i><i></i></span><span class="h-bar h-heat"><i></i></span><span class="h-k" data-k="gun">Gun</span></div>
+        <div class="h-spec"><kbd>C</kbd><span class="h-bar h-specbar"><i></i></span><span class="h-k" data-k="spec">Special</span></div>
       </div>
       <div class="h-hitmark" aria-hidden="true">Hit</div>
       <div class="h-level"></div>
@@ -72,6 +82,7 @@ export class Hud {
       <button class="h-pause" type="button" aria-label="Pause">II</button>
       <div class="h-alert" hidden></div>
       <div class="h-radio" aria-live="polite" hidden></div>
+      <div class="h-power" hidden><span data-k="power"></span><span class="h-bar"><i></i></span></div>
       <div class="h-hint" hidden>Turn your phone sideways for the best view</div>`;
     const q = <T extends HTMLElement>(sel: string) => root.querySelector(sel) as T;
     this.speed = q('[data-k="speed"]');
@@ -82,6 +93,12 @@ export class Hud {
     this.gunLabel = q('[data-k="gun"]');
     this.hullEl = q('.h-hull');
     this.hullPips = Array.from(this.hullEl.querySelectorAll('i'));
+    this.specEl = q('.h-spec');
+    this.specFill = q('.h-specbar i');
+    this.specName = q('[data-k="spec"]');
+    this.powerEl = q('.h-power');
+    this.powerName = q('[data-k="power"]');
+    this.powerFill = q('.h-power i');
     this.hitMark = q('.h-hitmark');
     this.alive = q('[data-k="alive"]');
     this.score = q('[data-k="score"]');
@@ -106,6 +123,10 @@ export class Hud {
 
   setup(world: World, colors: number[], player: number): void {
     this.colors = colors;
+    const g = world.gliders[player];
+    this.hullEl.innerHTML = '<i></i>'.repeat(g.ship.hull);
+    this.hullPips = Array.from(this.hullEl.querySelectorAll('i'));
+    this.specName.textContent = g.ship.special.name;
     this.level.textContent = `L${world.spec.index} · ${world.spec.name} · ${world.spec.altitude}`;
     this.feedEl.innerHTML = '';
     this.center.classList.remove('show');
@@ -217,6 +238,29 @@ export class Hud {
       this.hitUntil = 0;
     }
     this.damageFlash = Math.max(0, this.damageFlash - dt * 2.2);
+    // Special: fills up while it recharges, glows when ready.
+    const sp = g.ship.special;
+    const wait = world.specialWait(g);
+    const ready = wait <= 0;
+    const fill = ready ? 1 : 1 - (wait * 60) / sp.cooldown;
+    this.specFill.style.width = `${Math.round(fill * 100)}%`;
+    this.specEl.classList.toggle('ready', ready && g.alive);
+    if (this.specialButton) {
+      this.specialButton.style.setProperty('--cool', fill.toFixed(3));
+      this.specialButton.classList.toggle('ready', ready && g.alive);
+    }
+    // Power-up from a ring: name and the time left.
+    const p = g.power;
+    this.powerEl.hidden = !p || !g.alive;
+    if (p && g.alive) {
+      const spec = POWERS[p];
+      if (this.powerName.textContent !== spec.name) {
+        this.powerName.textContent = spec.name;
+        this.powerEl.style.setProperty('--pc', `#${spec.color.toString(16).padStart(6, '0')}`);
+      }
+      const left = Math.max(0, g.powerUntil - world.tick) / spec.duration;
+      this.powerFill.style.width = `${Math.round(left * 100)}%`;
+    }
     this.updateWarnings(world, player);
     this.drawRadar(world, player);
   }
@@ -343,11 +387,11 @@ export class Hud {
     });
     ctx.globalAlpha = 1;
 
-    // Boost rings.
-    ctx.strokeStyle = '#ffc36b';
-    ctx.lineWidth = 1.5 * px;
+    // Bonus rings, in the colour of their bonus.
+    ctx.lineWidth = 2 * px;
     for (const rg of world.rings) {
       if (!rg.active) continue;
+      ctx.strokeStyle = hex(POWERS[rg.power].color);
       ctx.beginPath();
       ctx.arc(toX(rg.c.x, rg.c.z), toY(rg.c.x, rg.c.z), 3 * px, 0, Math.PI * 2);
       ctx.stroke();

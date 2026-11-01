@@ -1,4 +1,5 @@
 import { LEVELS, LEVEL_ORDER } from '../core/levels';
+import { SHIPS } from '../core/ships';
 import type { Difficulty } from '../core/types';
 import type { GameListing, ListResult } from '../net/games';
 import { GAME_VERSION, MAX_PILOTS, type MatchSettings, type Mode } from '../online/match';
@@ -211,7 +212,7 @@ export function pilotsHtml(s: OnlineSession): string {
         <span class="p-wave" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="p-name">${esc(p.name)}</span>
         <span class="p-tags">${tags}</span>
-        <span class="p-wins">${p.wins ? plural(p.wins, 'win') : ''}</span>
+        <span class="p-wins">${esc(SHIPS[p.ship].name)}${p.wins ? ` · ${plural(p.wins, 'win')}` : ''}</span>
         ${right}
       </li>`;
     })
@@ -247,6 +248,7 @@ export function lobbyScreen(s: OnlineSession, prefs: OnlinePrefs, touch: boolean
     ${host && !m.running ? `<div class="m-list"><button class="mi primary" data-act="l-start" data-focus>${startLabel}</button></div>` : ''}
     <p class="m-error" id="on-notice"${s.notice ? '' : ' hidden'}>${esc(s.notice)}</p>
     ${outdated.length ? `<p class="m-error">${esc(outdated.join(', '))} ${outdated.length === 1 ? 'runs' : 'run'} another game version. Everyone should reload the page.</p>` : ''}
+    <div class="m-row"><span class="lbl">Your ship</span><div class="seg"><button data-act="hangar" aria-pressed="true">${esc(SHIPS[m.ship].name)} · change</button></div></div>
     <h3 class="m-sub">On the radio · ${count}/${MAX_PILOTS}</h3>
     <div id="on-pilots">${pilotsHtml(s)}</div>
     <div class="m-row"><span class="lbl">Radio</span>

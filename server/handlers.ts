@@ -1,6 +1,7 @@
 import { validateCallsign } from '../src/core/callsign';
 import { CORE_VERSION } from '../src/core/config';
 import { LEVELS } from '../src/core/levels';
+import { isShip } from '../src/core/ships';
 import { decodeReplay } from '../src/core/replay';
 import { replaySolo, type SoloSetup } from '../src/core/solo';
 import type { Difficulty, LevelId } from '../src/core/types';
@@ -65,13 +66,14 @@ export function parseSubmission(body: unknown): Submission | string {
   if (typeof s.seed !== 'number' || !Number.isInteger(s.seed) || s.seed < 0 || s.seed > 0xffffffff) return 'bad-setup';
   if (typeof s.bots !== 'number' || !Number.isInteger(s.bots) || s.bots < 1 || s.bots > 7) return 'bad-setup';
   if (typeof s.assist !== 'boolean') return 'bad-setup';
+  if (!isShip(s.ship)) return 'bad-setup';
   if (typeof b.replay !== 'string' || b.replay.length > 400_000) return 'bad-replay';
   if (typeof b.score !== 'number' || !Number.isInteger(b.score)) return 'bad-score';
   return {
     version: b.version,
     callsign: b.callsign.trim(),
     key: b.key,
-    setup: { level: s.level, seed: s.seed, bots: s.bots, difficulty: s.difficulty, assist: s.assist },
+    setup: { level: s.level, seed: s.seed, bots: s.bots, difficulty: s.difficulty, assist: s.assist, ship: s.ship },
     replay: b.replay,
     score: b.score,
   };
@@ -130,6 +132,7 @@ export async function handleScore(req: Request, deps: Deps): Promise<Response> {
         pilots: r.pilots,
         difficulty: sub.setup.difficulty,
         bots: sub.setup.bots,
+        ship: sub.setup.ship,
         cutoffs: r.cutoffs,
         shotDowns: r.shotDowns,
         hits: r.hits,
@@ -145,6 +148,7 @@ export async function handleScore(req: Request, deps: Deps): Promise<Response> {
         bots: sub.setup.bots,
         difficulty: sub.setup.difficulty,
         assist: sub.setup.assist,
+        ship: sub.setup.ship,
         ticks: run.ticks,
         data: sub.replay,
         at: now,

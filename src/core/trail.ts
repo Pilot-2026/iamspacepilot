@@ -1,4 +1,4 @@
-import { WALL_HALF } from './config';
+import { TAPER_MIN, TAPER_TICKS } from './config';
 import { clamp, type V3 } from './math';
 
 /** Segment ids pack the wall owner and the segment index into one number. */
@@ -6,7 +6,8 @@ export const SEG_SHIFT = 65536;
 
 /**
  * The light wall of one glider: a list of samples. Segment i connects
- * sample i and sample i + 1 and spans +-WALL_HALF along the stored up vectors.
+ * sample i and sample i + 1 and spans +-h along the stored up vectors. A new
+ * sample starts narrow and grows to its full half height h (see halfAt).
  */
 export class Trail {
   readonly px: number[] = [];
@@ -16,12 +17,15 @@ export class Trail {
   readonly uy: number[] = [];
   readonly uz: number[] = [];
   readonly tick: number[] = [];
+  /** Full half height of each sample. */
+  readonly h: number[] = [];
 
   get count(): number {
     return this.px.length;
   }
 
-  add(p: V3, u: V3, tick: number): void {
+  add(p: V3, u: V3, tick: number, h: number): void {
+    this.h.push(h);
     this.px.push(p.x);
     this.py.push(p.y);
     this.pz.push(p.z);
@@ -88,30 +92,39 @@ export class SpatialHash {
   }
 }
 
-/**
- * Writes the four corners of wall segment i into c:
- * A = p_i + u_i h, B = p_i - u_i h, C = p_i+1 + u_i+1 h, D = p_i+1 - u_i+1 h.
- */
-export function quadCorners(tr: Trail, i: number, c: Float64Array): void {
-  const h = WALL_HALF;
-  const j = i + 1;
-  c[0] = tr.px[i] + tr.ux[i] * h;
-  c[1] = tr.py[i] + tr.uy[i] * h;
-  c[2] = tr.pz[i] + tr.uz[i] * h;
-  c[3] = tr.px[i] - tr.ux[i] * h;
-  c[4] = tr.py[i] - tr.uy[i] * h;
-  c[5] = tr.pz[i] - tr.uz[i] * h;
-  c[6] = tr.px[j] + tr.ux[j] * h;
-  c[7] = tr.py[j] + tr.uy[j] * h;
-  c[8] = tr.pz[j] + tr.uz[j] * h;
-  c[9] = tr.px[j] - tr.ux[j] * h;
-  c[10] = tr.py[j] - tr.uy[j] * h;
-  c[11] = tr.pz[j] - tr.uz[j] * h;
+/** Half height of sample k at the given tick: narrow when new, full height after TAPER_TICKS. */
+export function halfAt(tr: Trail, k: number, tick: number): number {
+  const age = tick - tr.tick[k];
+  if (age >= TAPER_TICKS) return tr.h[k];
+  const a = age > 0 ? age : 0;
+  return tr.h[k] * (TAPER_MIN + ((1 - TAPER_MIN) * a) / TAPER_TICKS);
 }
 
-/** Bounding box of segment i, padded by m. Writes [minX, minY, minZ, maxX, maxY, maxZ]. */
+/**
+ * Writes the four corners of wall segment i at the given tick into c:
+ * A = p_i + u_i h_i, B = p_i - u_i h_i, C = p_i+1 + u_i+1 h_i+1, D = p_i+1 - u_i+1 h_i+1.
+ */
+export function quadCorners(tr: Trail, i: number, c: Float64Array, tick: number): void {
+  const j = i + 1;
+  const hi = halfAt(tr, i, tick);
+  const hj = halfAt(tr, j, tick);
+  c[0] = tr.px[i] + tr.ux[i] * hi;
+  c[1] = tr.py[i] + tr.uy[i] * hi;
+  c[2] = tr.pz[i] + tr.uz[i] * hi;
+  c[3] = tr.px[i] - tr.ux[i] * hi;
+  c[4] = tr.py[i] - tr.uy[i] * hi;
+  c[5] = tr.pz[i] - tr.uz[i] * hi;
+  c[6] = tr.px[j] + tr.ux[j] * hj;
+  c[7] = tr.py[j] + tr.uy[j] * hj;
+  c[8] = tr.pz[j] + tr.uz[j] * hj;
+  c[9] = tr.px[j] - tr.ux[j] * hj;
+  c[10] = tr.py[j] - tr.uy[j] * hj;
+  c[11] = tr.pz[j] - tr.uz[j] * hj;
+}
+
+/** Bounding box of segment i at full height, padded by m. Writes [minX, minY, minZ, maxX, maxY, maxZ]. */
 export function segmentBounds(tr: Trail, i: number, m: number, out: Float64Array): void {
-  const h = WALL_HALF + m;
+  const h = (tr.h[i] > tr.h[i + 1] ? tr.h[i] : tr.h[i + 1]) + m;
   const j = i + 1;
   out[0] = Math.min(tr.px[i], tr.px[j]) - h;
   out[1] = Math.min(tr.py[i], tr.py[j]) - h;
@@ -175,8 +188,8 @@ export function segQuad(ox: number, oy: number, oz: number, dx: number, dy: numb
   return t1 < t2 ? t1 : t2;
 }
 
-/** Squared distance from p to wall segment i. The closest wall point is written to near. */
-export function wallDistSq(p: V3, tr: Trail, i: number, near: V3): number {
+/** Squared distance from p to wall segment i at the given tick. The closest wall point is written to near. */
+export function wallDistSq(p: V3, tr: Trail, i: number, near: V3, tick: number): number {
   const j = i + 1;
   const s0x = tr.px[i],
     s0y = tr.py[i],
@@ -193,7 +206,9 @@ export function wallDistSq(p: V3, tr: Trail, i: number, near: V3): number {
   const ux = tr.ux[i] + (tr.ux[j] - tr.ux[i]) * t;
   const uy = tr.uy[i] + (tr.uy[j] - tr.uy[i]) * t;
   const uz = tr.uz[i] + (tr.uz[j] - tr.uz[i]) * t;
-  const du = clamp((p.x - cx) * ux + (p.y - cy) * uy + (p.z - cz) * uz, -WALL_HALF, WALL_HALF);
+  const hi = halfAt(tr, i, tick);
+  const half = hi + (halfAt(tr, j, tick) - hi) * t;
+  const du = clamp((p.x - cx) * ux + (p.y - cy) * uy + (p.z - cz) * uz, -half, half);
   const nx = cx + ux * du,
     ny = cy + uy * du,
     nz = cz + uz * du;

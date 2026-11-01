@@ -3,10 +3,10 @@
  * flight on the server, so client and server must run the same rules. Bump this
  * whenever a change alters how a flight plays out.
  */
-export const CORE_VERSION = 'core-3';
+export const CORE_VERSION = 'core-4';
 
 /** Version of the online message format. Devices with different versions cannot play together. */
-export const NET_PROTOCOL = 'p2';
+export const NET_PROTOCOL = 'p3';
 /** Pilots per online game, bots included. */
 export const MAX_ONLINE_PILOTS = 8;
 
@@ -18,7 +18,11 @@ export const COUNTDOWN_TICKS = 3 * TICK_RATE;
 /** A wall sample is stored every few ticks (20 per second). */
 export const SAMPLE_TICKS = 3;
 /** Half height of a light wall. The wall spans +-WALL_HALF along the glider's up axis. */
-export const WALL_HALF = 2.0;
+export const WALL_HALF = 4.0;
+/** A new wall piece leaves the ship narrow and grows to full height within this many ticks. */
+export const TAPER_TICKS = 24;
+/** Height of a brand-new wall piece, as a share of its full height. */
+export const TAPER_MIN = 0.15;
 /** The wall leaves the glider this far behind its centre. */
 export const TAIL_OFFSET = 1.8;
 /** Wing probes: collisions are tested at the centre and at both half wings. */

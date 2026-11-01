@@ -12,6 +12,7 @@ import { Sound } from './audio/sound';
 import { DT } from './core/config';
 import { ReplayRecorder, quantize } from './core/replay';
 import { LEVELS, LEVEL_ORDER, nextLevel } from './core/levels';
+import { POWERS } from './core/powerups';
 import { liveScore, playerFinished, soloScore, soloWorldSetup, type SoloScore, type SoloSetup } from './core/solo';
 import { NEUTRAL_INPUT, type CrashInfo, type SimEvent } from './core/types';
 import { World } from './core/world';
@@ -20,6 +21,7 @@ import { fetchBoard, onlineErrorText, submitScore } from './net/api';
 import { gameErrorText, listGames } from './net/games';
 import type { RoundResult } from './online/match';
 import { OnlineSession, type SessionEvents } from './online/session';
+import { ShipPreviews } from './render/preview';
 import { GameView } from './render/view';
 import { addLocalScore, loadProfile, saveProfile, type Profile } from './storage/profile';
 import { Hud } from './ui/hud';
@@ -41,6 +43,7 @@ class App {
   private readonly touch: TouchControls;
   private readonly input: InputManager;
   private view: GameView | null = null;
+  private previews: ShipPreviews | null = null;
   private world: World | null = null;
   private state: State = 'menu';
   private acc = 0;
@@ -73,6 +76,7 @@ class App {
     this.hud = new Hud($('hud'), () => this.pause(), () => this.cheat());
     this.hud.hide();
     this.input = new InputManager(this.touch, () => this.togglePause(), () => this.cheat());
+    this.hud.specialButton = this.touch.specialButton;
     this.menu = new Menu($('menu'), this.profile, {
       launch: () => this.launch(),
       resume: () => this.resume(),
@@ -85,6 +89,11 @@ class App {
         this.sound.click();
       },
       loadBoard: (level) => fetchBoard(level),
+      ships: (canvases) => {
+        if (!canvases.length && !this.previews) return;
+        this.previews ??= new ShipPreviews();
+        this.previews.attach(canvases);
+      },
       online: {
         list: () => listGames(),
         host: () => void this.goOnline(null),
@@ -164,6 +173,7 @@ class App {
       bots: p.solo.bots,
       difficulty: p.solo.difficulty,
       assist: p.settings.autoHorizon,
+      ship: p.ship,
     };
     this.world = new World(soloWorldSetup(this.solo, p.callsign || 'You'));
     this.recorder = new ReplayRecorder();
@@ -295,10 +305,27 @@ class App {
           this.hud.message('Shield closing', 'The arena is shrinking', 2);
           this.sound.shieldWarning();
           break;
-        case 'ring':
+        case 'power':
           if (e.id === this.local) {
-            this.hud.message('Boost +', '', 0.6);
+            this.hud.message(POWERS[e.power].name, POWERS[e.power].text, 1.4);
             this.sound.ring();
+          }
+          break;
+        case 'special':
+          if (e.id === this.local) {
+            this.hud.message(w.gliders[e.id].ship.special.name, '', 0.8);
+            this.sound.special(e.kind);
+          } else if (e.kind === 'shockwave') {
+            this.sound.special(e.kind, 0.4);
+          }
+          break;
+        case 'shield':
+          if (e.id === this.local) this.sound.shieldPop();
+          break;
+        case 'jam':
+          if (e.id === this.local) {
+            this.hud.message('Gun jammed', 'Shockwave', 1.2);
+            this.sound.overheat();
           }
           break;
         case 'bolt-strike':
@@ -315,7 +342,9 @@ class App {
           break;
         }
         case 'hit':
-          if (e.id === this.local) {
+          if (e.id === this.local && e.shield) {
+            this.sound.shieldPop();
+          } else if (e.id === this.local) {
             this.hud.damage();
             this.sound.hit(true);
           } else if (e.by === this.local) {

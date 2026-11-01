@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { TICK_RATE, WALL_HALF } from '../core/config';
-import type { Trail } from '../core/trail';
+import { TAPER_TICKS, TICK_RATE } from '../core/config';
+import { halfAt, type Trail } from '../core/trail';
 import { ribbonFrag, ribbonVert } from './shaders';
 
 export interface WallStyle {
@@ -86,16 +86,20 @@ export class RibbonView {
     this.mesh.material.uniforms.uDim.value = v;
   }
 
-  /** Brings the GPU copy up to date with the trail and moves the head to the glider. */
-  sync(tr: Trail, head: THREE.Vector3 | null, headUp: THREE.Vector3 | null, now: number): void {
+  /**
+   * Brings the GPU copy up to date with the trail and moves the head to the
+   * glider. Young wall pieces are still growing, so they are rewritten each frame.
+   */
+  sync(tr: Trail, head: THREE.Vector3 | null, headUp: THREE.Vector3 | null, now: number, tick: number, headHalf: number): void {
     const n = tr.count;
     const total = n + (head ? 1 : 0);
     if (total + 1 > this.capacity) this.allocate(Math.max(this.capacity * 2, total + 512));
     const pos = this.pos;
     const birth = this.birth;
-    const h = WALL_HALF;
-    const from = Math.min(this.written, n);
-    for (let k = this.written; k < n; k++) {
+    let from = Math.min(this.written, n);
+    while (from > 0 && tick - tr.tick[from - 1] <= TAPER_TICKS + 1) from--;
+    for (let k = from; k < n; k++) {
+      const h = halfAt(tr, k, tick);
       const o = k * 6;
       pos[o] = tr.px[k] + tr.ux[k] * h;
       pos[o + 1] = tr.py[k] + tr.uy[k] * h;
@@ -109,6 +113,7 @@ export class RibbonView {
     }
     this.written = n;
     if (head && headUp) {
+      const h = headHalf;
       const o = n * 6;
       pos[o] = head.x + headUp.x * h;
       pos[o + 1] = head.y + headUp.y * h;

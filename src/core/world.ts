@@ -13,12 +13,15 @@ import {
   SELF_SKIP,
   SELF_SLIP_SKIP,
   SHOT_KEY,
+  TAPER_TICKS,
   TICK_RATE,
   WALL_HALF,
   WING_PROBE,
 } from './config';
 import { integrateGlider, tailPoint, type Glider } from './glider';
 import { LEVELS, type LevelSpec } from './levels';
+import { BIG_WALL, POWERS, POWER_ORDER, RAPID_INTERVAL, SEEKER_CONE, SEEKER_HOMING, ringHash, type PowerId } from './powerups';
+import { JAM_TICKS, SHIPS, SHOCKWAVE_RADIUS, type ShipId, type SpecialKind } from './ships';
 import { AXIS_FWD, AXIS_LEFT, AXIS_UP, Quat, TWO_PI, V3, dcos, dsin } from './math';
 import { Rng } from './rng';
 import { SEG_SHIFT, SpatialHash, Trail, quadCorners, segQuad, segSegDistSq, segmentBounds, wallDistSq } from './trail';
@@ -33,13 +36,15 @@ export interface PilotSetup {
   remote?: boolean;
   /** Team number in team games. */
   team?: number;
+  /** Ship model, Trident if not given. */
+  ship?: ShipId;
 }
 
 export interface WorldSetup {
   level: LevelId;
   seed: number;
   pilots: PilotSetup[];
-  /** Online game: no boost rings, lightning from its own random stream so every device sees the same bolts. */
+  /** Online game: lightning from its own random stream so every device sees the same bolts; each device decides about its own gliders. */
   online?: boolean;
   /** Team game: your team's walls do not hurt you, the last team flying wins. */
   teams?: boolean;
@@ -66,7 +71,19 @@ export interface Ring {
   readonly c: V3;
   readonly n: V3;
   respawnTick: number;
+  /** How often this ring was placed so far: position and power-up follow from it. */
+  count: number;
+  /** The power-up this ring gives. */
+  power: PowerId;
 }
+
+/** Ticks until a used ring appears again somewhere else. */
+const RING_RESPAWN = 8 * TICK_RATE;
+/** After the shield took a wall, walls cannot hurt the ship for this many ticks. */
+const SHIELD_GHOST = 30;
+/** Fan of the Trident Burst and of the triple shot (radians to the side). */
+const BURST_FAN = [-0.24, -0.12, 0, 0.12, 0.24];
+const TRIPLE_FAN = [-0.12, 0, 0.12];
 
 /** A shot from a glider's gun. */
 export interface Shot {
@@ -78,6 +95,10 @@ export interface Shot {
   /** Unit direction. */
   readonly d: V3;
   readonly born: number;
+  /** m/s. */
+  readonly speed: number;
+  /** Seeker shot: turns much harder towards its target. */
+  readonly seek: boolean;
   alive: boolean;
 }
 
@@ -131,6 +152,7 @@ export class World {
   winnerTeam = -1;
   readonly online: boolean;
   readonly teams: boolean;
+  readonly seed: number;
   private readonly boltRng: Rng;
   /** Tick on which the round ended, -1 while it is still running. */
   overTick = -1;
@@ -145,6 +167,7 @@ export class World {
 
   constructor(setup: WorldSetup) {
     this.spec = LEVELS[setup.level];
+    this.seed = setup.seed >>> 0;
     this.rng = new Rng(setup.seed);
     this.boltRng = new Rng((setup.seed ^ 0x5bd1e995) >>> 0);
     this.online = !!setup.online;
@@ -165,6 +188,7 @@ export class World {
       left.cross(AXIS_UP, f).normalize();
       up.cross(f, left).normalize();
       const q = new Quat().setFromBasis(left, up, f);
+      const ship = SHIPS[ps.ship ?? 'trident'] ?? SHIPS.trident;
       this.gliders.push({
         id: i,
         name: ps.name,
@@ -185,23 +209,32 @@ export class World {
         crash: null,
         place: 0,
         rings: 0,
-        hull: GUN.hull,
+        hull: ship.hull,
         heat: 0,
         overheated: false,
         lastShot: -1000,
         shots: 0,
         hits: 0,
+        ship,
+        specialReady: 0,
+        specialUntil: -1,
+        power: null,
+        powerUntil: -1,
+        shield: false,
+        ghostUntil: -1,
+        jamUntil: -1,
+        mods: { turn: 1, roll: 1, cruise: 1, boost: 1, drain: 1, slip: 1, forceBoost: false },
         wallDist: 1e9,
         near: new V3(),
         hasNear: false,
         brain: ps.isBot && !ps.remote ? makeBrain(ps.skill, i) : null,
-        input: { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false },
+        input: { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false, special: false },
       });
       this.trails.push(new Trail());
     });
-    for (let k = 0; k < (this.online ? 0 : this.spec.rings); k++) {
-      const ring: Ring = { active: true, c: new V3(), n: new V3(1, 0, 0), respawnTick: 0 };
-      this.placeRing(ring);
+    for (let k = 0; k < this.spec.rings; k++) {
+      const ring: Ring = { active: true, c: new V3(), n: new V3(1, 0, 0), respawnTick: 0, count: 0, power: 'repair' };
+      this.placeRing(ring, k);
       this.rings.push(ring);
     }
   }
@@ -250,12 +283,21 @@ export class World {
     }
 
     for (const g of gl) {
+      if (g.power && g.powerUntil >= 0 && this.tick >= g.powerUntil) {
+        if (g.power === 'shield') g.shield = false;
+        g.power = null;
+      }
+    }
+
+    for (const g of gl) {
       if (!g.alive) continue;
       if (g.remote) {
         this.flyRemote(g);
         continue;
       }
       const inp = g.brain ? g.brain.input : (inputs[g.id] ?? NEUTRAL_INPUT);
+      if (inp.special) this.useSpecial(g);
+      this.updateMods(g);
       integrateGlider(g, inp);
       this.gun(g, !!inp.fire);
       const up = spec.updraft;
@@ -297,6 +339,7 @@ export class World {
         const b = gl[j];
         if (!b.alive || a.p.distSq(b.p) > hit2) continue;
         if (this.teams && a.team === b.team) continue;
+        if (this.phasing(a) || this.phasing(b)) continue;
         // Each device only decides about the gliders it flies itself.
         if (!a.remote && !pending.some((x) => x.id === a.id)) pending.push({ id: a.id, crash: { kind: 'collision', by: b.id, seg: -1 } });
         if (!b.remote && !pending.some((x) => x.id === b.id)) pending.push({ id: b.id, crash: { kind: 'collision', by: a.id, seg: -1 } });
@@ -395,20 +438,21 @@ export class World {
   }
 
   /**
-   * Online: wall samples of a remote glider, as [x, y, z, ux, uy, uz] groups,
+   * Online: wall samples of a remote glider, as [x, y, z, ux, uy, uz, h] groups,
    * starting at sample index start. Samples that are already known are skipped.
    */
   addRemoteSamples(id: number, start: number, data: readonly number[]): void {
     const g = this.gliders[id];
     if (!g || !g.remote) return;
     const tr = this.trails[id];
-    for (let k = 0; k * 6 < data.length; k++) {
+    for (let k = 0; k * 7 + 6 < data.length; k++) {
       if (start + k < tr.count) continue;
       if (tr.count >= SEG_SHIFT - 1) return;
-      const o = k * 6;
+      const o = k * 7;
       tmpA.set(data[o], data[o + 1], data[o + 2]);
       tmpB.set(data[o + 3], data[o + 4], data[o + 5]);
-      tr.add(tmpA, tmpB, this.tick);
+      const h = data[o + 6];
+      tr.add(tmpA, tmpB, this.tick, h > 0.5 && h < WALL_HALF * BIG_WALL + 0.01 ? h : WALL_HALF);
       const n = tr.count;
       if (n >= 2) {
         const seg = n - 2;
@@ -427,24 +471,64 @@ export class World {
   }
 
   /** Online: a glider flown by another device fired a shot. */
-  addRemoteShot(owner: number, key: number, px: number, py: number, pz: number, dx: number, dy: number, dz: number): void {
+  addRemoteShot(owner: number, key: number, px: number, py: number, pz: number, dx: number, dy: number, dz: number, seek: boolean): void {
     const g = this.gliders[owner];
     if (!g || !g.remote || this.shots.some((s) => s.key === key)) return;
     const l = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (!(l > 0.5)) return;
-    this.spawnShot(owner, key, px, py, pz, dx / l, dy / l, dz / l);
+    this.spawnShot(owner, key, px, py, pz, dx / l, dy / l, dz / l, seek);
     this.queued.push({ type: 'shot', id: owner, shot: key });
   }
 
-  /** Online: the device that flies glider id reports that a shot hit it. */
-  remoteHit(id: number, by: number, key: number, hull: number): void {
+  /** Online: the device that flies glider id reports that a shot hit it (or its shield). */
+  remoteHit(id: number, by: number, key: number, hull: number, shield: boolean): void {
     const g = this.gliders[id];
     if (!g || !g.remote || !g.alive) return;
     for (const s of this.shots) if (s.key === key) s.alive = false;
-    g.hull = hull < 0 ? 0 : hull > GUN.hull ? GUN.hull : hull;
+    if (shield) {
+      this.dropShield(g);
+    } else {
+      g.hull = hull < 0 ? 0 : hull > g.ship.hull ? g.ship.hull : hull;
+    }
     const shooter = this.gliders[by];
-    if (shooter) shooter.hits++;
-    this.queued.push({ type: 'hit', id, by: shooter ? by : -1, shot: key, hull: g.hull });
+    if (shooter && !shield) shooter.hits++;
+    this.queued.push({ type: 'hit', id, by: shooter ? by : -1, shot: key, hull: g.hull, shield });
+  }
+
+  /** Online: a glider flown by another device used its special ability. */
+  remoteSpecial(id: number, kind: SpecialKind, px: number, py: number, pz: number): void {
+    const g = this.gliders[id];
+    if (!g || !g.remote || !g.alive || g.ship.special.kind !== kind) return;
+    const sp = g.ship.special;
+    g.specialReady = this.tick + sp.cooldown;
+    g.specialUntil = this.tick + sp.duration;
+    if (kind === 'shockwave') this.shockwave(id, px, py, pz, this.queued);
+    this.queued.push({ type: 'special', id, kind });
+  }
+
+  /** Online: a glider flown by another device flew through ring k (placed for the n-th time). */
+  remoteRing(id: number, k: number, n: number, power: PowerId): void {
+    const g = this.gliders[id];
+    const ring = this.rings[k];
+    if (!g || !g.remote || !ring) return;
+    if (ring.active && ring.count === n) {
+      ring.active = false;
+      ring.respawnTick = this.tick + RING_RESPAWN;
+    }
+    if (!g.alive) return;
+    g.rings++;
+    this.applyPower(g, power);
+    this.queued.push({ type: 'power', id, power, ring: k, n });
+  }
+
+  /** True while glider g phases through walls and shots (Halo special). */
+  phasing(g: Glider): boolean {
+    return g.ship.special.kind === 'phase' && this.tick < g.specialUntil;
+  }
+
+  /** Seconds until the special of glider g is ready again (0 = ready). */
+  specialWait(g: Glider): number {
+    return g.specialReady > this.tick ? (g.specialReady - this.tick) / TICK_RATE : 0;
   }
 
   /** Online: this device takes over a bot that another device flew until now. */
@@ -468,7 +552,7 @@ export class World {
     const ex = p.x + d.x * len;
     const ey = p.y + d.y * len;
     const ez = p.z + d.z * len;
-    const m = WALL_HALF + 0.5;
+    const m = WALL_HALF * BIG_WALL + 0.5;
     const cand = this.cand;
     cand.clear();
     this.hash.query(
@@ -487,7 +571,9 @@ export class World {
       const seg = id - owner * SEG_SHIFT;
       const tr = this.trails[owner];
       if (owner === self && seg > tr.count - 2 - SELF_SKIP) continue;
-      quadCorners(tr, seg, c);
+      if (this.teams && this.gliders[owner].team === this.gliders[self].team) continue;
+      // Plan with the full height: a young wall piece is still growing.
+      quadCorners(tr, seg, c, this.tick + TAPER_TICKS);
       const t = segQuad(p.x, p.y, p.z, d.x * len, d.y * len, d.z * len, c);
       if (t >= 0 && t < best) best = t;
     }
@@ -506,31 +592,107 @@ export class World {
     return best * len;
   }
 
+  /** Flight factors for this tick: ship, afterburner and turbo. */
+  private updateMods(g: Glider): void {
+    const ship = g.ship;
+    const m = g.mods;
+    const burner = ship.special.kind === 'afterburner' && this.tick < g.specialUntil;
+    m.turn = ship.turn * (burner ? 1.2 : 1);
+    m.roll = ship.roll;
+    m.cruise = ship.cruise;
+    m.boost = ship.boost * (burner ? 1.3 : 1);
+    m.forceBoost = burner;
+    m.drain = g.power === 'turbo' ? 0 : 1;
+    m.slip = ship.slip;
+  }
+
+  /** Uses the ship's special ability if it is ready. */
+  private useSpecial(g: Glider): void {
+    if (this.phase !== 'flying' || this.tick < g.specialReady) return;
+    const sp = g.ship.special;
+    g.specialReady = this.tick + sp.cooldown;
+    g.specialUntil = this.tick + sp.duration;
+    if (sp.kind === 'burst') this.fan(g, BURST_FAN, false);
+    else if (sp.kind === 'shockwave') this.shockwave(g.id, g.p.x, g.p.y, g.p.z, this.events);
+    this.events.push({ type: 'special', id: g.id, kind: sp.kind });
+  }
+
+  /**
+   * Bulwark shockwave around (x, y, z): enemy shots there vanish, and the guns of
+   * enemy gliders this device flies are jammed. Events go to out.
+   */
+  private shockwave(owner: number, x: number, y: number, z: number, out: SimEvent[]): void {
+    const r2 = SHOCKWAVE_RADIUS * SHOCKWAVE_RADIUS;
+    const team = this.gliders[owner].team;
+    const enemy = (id: number) => id !== owner && !(this.teams && this.gliders[id].team === team);
+    for (const s of this.shots) {
+      if (!s.alive || !enemy(s.owner)) continue;
+      const dx = s.p.x - x;
+      const dy = s.p.y - y;
+      const dz = s.p.z - z;
+      if (dx * dx + dy * dy + dz * dz < r2) s.alive = false;
+    }
+    for (const g of this.gliders) {
+      if (!g.alive || g.remote || !enemy(g.id)) continue;
+      const dx = g.p.x - x;
+      const dy = g.p.y - y;
+      const dz = g.p.z - z;
+      if (dx * dx + dy * dy + dz * dz >= r2) continue;
+      g.jamUntil = this.tick + JAM_TICKS;
+      g.heat = 1;
+      g.overheated = true;
+      out.push({ type: 'jam', id: g.id });
+    }
+  }
+
   /** Cools the gun and fires while the trigger is held. */
   private gun(g: Glider, fire: boolean): void {
     if (g.heat > 0) {
       g.heat -= GUN.cool * DT;
       if (g.heat < 0) g.heat = 0;
     }
-    if (g.overheated && g.heat <= GUN.unlock) g.overheated = false;
-    if (!fire || g.overheated || this.phase !== 'flying') return;
-    if (this.tick - g.lastShot < GUN.interval) return;
+    if (g.overheated && g.heat <= GUN.unlock && this.tick >= g.jamUntil) g.overheated = false;
+    if (!fire || g.overheated || this.phase !== 'flying' || this.tick < g.jamUntil) return;
+    const rapid = g.power === 'rapid';
+    if (this.tick - g.lastShot < (rapid ? RAPID_INTERVAL : GUN.interval)) return;
     g.lastShot = this.tick;
-    g.heat += GUN.heatPerShot;
-    if (g.heat >= 1) {
-      g.heat = 1;
-      g.overheated = true;
-      this.events.push({ type: 'overheat', id: g.id });
+    if (!rapid) {
+      g.heat += GUN.heatPerShot * g.ship.heat;
+      if (g.heat >= 1) {
+        g.heat = 1;
+        g.overheated = true;
+        this.events.push({ type: 'overheat', id: g.id });
+      }
     }
-    g.q.rotate(AXIS_FWD, tmpA);
-    const key = g.id * SHOT_KEY + (g.shots++ % SHOT_KEY);
-    this.spawnShot(g.id, key, g.p.x + tmpA.x * GUN.muzzle, g.p.y + tmpA.y * GUN.muzzle, g.p.z + tmpA.z * GUN.muzzle, tmpA.x, tmpA.y, tmpA.z);
-    this.events.push({ type: 'shot', id: g.id, shot: key });
+    this.fan(g, g.power === 'triple' ? TRIPLE_FAN : [0], g.power === 'seeker');
   }
 
-  private spawnShot(owner: number, key: number, px: number, py: number, pz: number, dx: number, dy: number, dz: number): void {
+  /** Fires one shot per angle (radians to the side) from the nose of g. */
+  private fan(g: Glider, angles: readonly number[], seek: boolean): void {
+    g.q.rotate(AXIS_FWD, tmpA);
+    g.q.rotate(AXIS_LEFT, tmpB);
+    const fx = tmpA.x;
+    const fy = tmpA.y;
+    const fz = tmpA.z;
+    const lx = tmpB.x;
+    const ly = tmpB.y;
+    const lz = tmpB.z;
+    for (const a of angles) {
+      const c = a === 0 ? 1 : dcos(a);
+      const sn = a === 0 ? 0 : dsin(a);
+      const dx = fx * c - lx * sn;
+      const dy = fy * c - ly * sn;
+      const dz = fz * c - lz * sn;
+      const key = g.id * SHOT_KEY + (g.shots++ % SHOT_KEY);
+      this.spawnShot(g.id, key, g.p.x + fx * GUN.muzzle, g.p.y + fy * GUN.muzzle, g.p.z + fz * GUN.muzzle, dx, dy, dz, seek);
+      this.events.push({ type: 'shot', id: g.id, shot: key });
+    }
+  }
+
+  private spawnShot(owner: number, key: number, px: number, py: number, pz: number, dx: number, dy: number, dz: number, seek: boolean): void {
     const p = new V3(px, py, pz);
-    this.shots.push({ key, owner, p, pPrev: p.clone(), d: new V3(dx, dy, dz), born: this.tick, alive: true });
+    const speed = GUN.speed * this.gliders[owner].ship.shotSpeed;
+    this.shots.push({ key, owner, p, pPrev: p.clone(), d: new V3(dx, dy, dz), born: this.tick, speed, seek, alive: true });
   }
 
   /**
@@ -550,7 +712,7 @@ export class World {
       }
       const ownerTeam = this.gliders[s.owner].team;
       let best = -1;
-      let bestDot: number = GUN.homingCone;
+      let bestDot: number = s.seek ? SEEKER_CONE : GUN.homingCone;
       for (const g of this.gliders) {
         if (!g.alive || g.id === s.owner || (this.teams && g.team === ownerTeam)) continue;
         let rx = g.p.x - s.p.x;
@@ -558,8 +720,9 @@ export class World {
         let rz = g.p.z - s.p.z;
         let d2 = rx * rx + ry * ry + rz * rz;
         if (d2 > range2 || d2 < 1e-6) continue;
+        if (this.phasing(g)) continue;
         // Aim where the glider will be when the shot gets there.
-        const lead = (Math.sqrt(d2) / GUN.speed) * g.speed;
+        const lead = (Math.sqrt(d2) / s.speed) * g.speed;
         g.q.rotate(AXIS_FWD, tmpNear);
         rx += tmpNear.x * lead;
         ry += tmpNear.y * lead;
@@ -575,13 +738,14 @@ export class World {
         }
       }
       if (best >= 0) {
-        s.d.x += (tmpB.x - s.d.x) * GUN.homing;
-        s.d.y += (tmpB.y - s.d.y) * GUN.homing;
-        s.d.z += (tmpB.z - s.d.z) * GUN.homing;
+        const k2 = s.seek ? GUN.homing * SEEKER_HOMING : GUN.homing;
+        s.d.x += (tmpB.x - s.d.x) * k2;
+        s.d.y += (tmpB.y - s.d.y) * k2;
+        s.d.z += (tmpB.z - s.d.z) * k2;
         s.d.normalize();
       }
       s.pPrev.copy(s.p);
-      s.p.addScaled(s.d, GUN.speed * DT);
+      s.p.addScaled(s.d, s.speed * DT);
       if (boundaryHit(arena, R, s.p)) {
         s.alive = false;
         continue;
@@ -595,7 +759,7 @@ export class World {
       const bz = s.p.z - az;
       const len2 = bx * bx + by * by + bz * bz;
       for (const g of this.gliders) {
-        if (!g.alive || g.remote || g.id === s.owner || (this.teams && g.team === ownerTeam)) continue;
+        if (!g.alive || g.remote || g.id === s.owner || (this.teams && g.team === ownerTeam) || this.phasing(g)) continue;
         const px = g.p.x - ax;
         const py = g.p.y - ay;
         const pz = g.p.z - az;
@@ -606,10 +770,16 @@ export class World {
         const dz = pz - bz * t;
         if (dx * dx + dy * dy + dz * dz > hit2) continue;
         s.alive = false;
+        if (g.shield) {
+          // The shield takes the hit and is gone.
+          this.dropShield(g);
+          this.events.push({ type: 'hit', id: g.id, by: s.owner, shot: s.key, hull: g.hull, shield: true });
+          break;
+        }
         g.hull--;
         g.energy = g.energy > GUN.energyHit ? g.energy - GUN.energyHit : 0;
         this.gliders[s.owner].hits++;
-        this.events.push({ type: 'hit', id: g.id, by: s.owner, shot: s.key, hull: g.hull });
+        this.events.push({ type: 'hit', id: g.id, by: s.owner, shot: s.key, hull: g.hull, shield: false });
         if (g.hull <= 0 && !pending.some((x) => x.id === g.id)) pending.push({ id: g.id, crash: { kind: 'shot', by: s.owner, seg: -1 } });
         break;
       }
@@ -621,7 +791,7 @@ export class World {
     if (tr.count >= SEG_SHIFT - 1) return;
     tailPoint(g, tmpA);
     g.q.rotate(AXIS_UP, tmpB);
-    tr.add(tmpA, tmpB, this.tick);
+    tr.add(tmpA, tmpB, this.tick, g.power === 'bigwall' ? WALL_HALF * BIG_WALL : WALL_HALF);
     const n = tr.count;
     if (n >= 2) {
       const seg = n - 2;
@@ -645,6 +815,7 @@ export class World {
     const cand = this.cand;
     cand.clear();
     this.hash.query(p.x - r, p.y - r, p.z - r, p.x + r, p.y + r, p.z + r, cand);
+    const wallsHurt = !this.phasing(g) && this.tick >= g.ghostUntil;
 
     let hitT = 2;
     let hitBy = -1;
@@ -662,7 +833,7 @@ export class World {
       if (own && seg > newest - SELF_SKIP) continue;
       // In team games your own team's walls let you through.
       if (this.teams && this.gliders[owner].team === g.team) continue;
-      quadCorners(tr, seg, c);
+      quadCorners(tr, seg, c, this.tick);
       let t = segQuad(o.x, o.y, o.z, dx, dy, dz, c);
       const t2 = segQuad(o.x + wx, o.y + wy, o.z + wz, dx, dy, dz, c);
       if (t2 >= 0 && (t < 0 || t2 < t)) t = t2;
@@ -675,7 +846,7 @@ export class World {
         hitSeg = seg;
       }
       if (!(own && seg > newest - SELF_SLIP_SKIP)) {
-        const d2 = wallDistSq(p, tr, seg, tmpNear);
+        const d2 = wallDistSq(p, tr, seg, tmpNear, this.tick);
         if (d2 < nearD2) {
           nearD2 = d2;
           g.near.copy(tmpNear);
@@ -686,10 +857,16 @@ export class World {
     g.hasNear = hasNear;
     g.wallDist = hasNear ? Math.sqrt(nearD2) : 1e9;
     if (hasNear) {
-      const e = g.energy + FLIGHT.slipRegen * (1 - g.wallDist / FLIGHT.slipRange);
+      const e = g.energy + FLIGHT.slipRegen * g.mods.slip * (1 - g.wallDist / FLIGHT.slipRange);
       g.energy = e > 1 ? 1 : e;
     }
-    if (hitId >= 0) return { kind: 'wall', by: hitBy, seg: hitSeg };
+    if (hitId >= 0 && wallsHurt) {
+      if (!g.shield) return { kind: 'wall', by: hitBy, seg: hitSeg };
+      // The shield takes the wall: fly on, the wall cannot hurt you for a moment.
+      this.dropShield(g);
+      g.ghostUntil = this.tick + SHIELD_GHOST;
+      this.events.push({ type: 'shield', id: g.id });
+    }
 
     const br2 = BOLT_RADIUS * BOLT_RADIUS;
     for (const b of this.bolts) {
@@ -720,16 +897,42 @@ export class World {
     }
   }
 
-  private placeRing(ring: Ring): void {
+  /**
+   * Places ring k for the ring.count-th time. Position and power-up only depend
+   * on the seed, k and count, so every device places it the same way.
+   */
+  private placeRing(ring: Ring, k: number): void {
     const arena = this.spec.arena;
-    const R = this.radius() * 0.62;
-    const a = this.rng.range(0, TWO_PI);
-    const r = Math.sqrt(this.rng.next()) * R;
+    const rng = new Rng(ringHash(this.seed, k, ring.count));
+    const R = arena.minRadius * 0.85;
+    const a = rng.range(0, TWO_PI);
+    const r = Math.sqrt(rng.next()) * R;
     const top = Math.min(30, arena.ceilY - 15);
-    const y = this.rng.range(arena.floorY + 18, top);
+    const y = rng.range(arena.floorY + 18, top);
     ring.c.set(dcos(a) * r, y, dsin(a) * r);
-    const b = this.rng.range(0, TWO_PI);
+    const b = rng.range(0, TWO_PI);
     ring.n.set(dcos(b), 0, dsin(b));
+    ring.power = POWER_ORDER[rng.int(POWER_ORDER.length)];
+  }
+
+  /** Gives glider g a power-up (repair is used at once, the others last a while). */
+  private applyPower(g: Glider, power: PowerId): void {
+    const e = g.energy + FLIGHT.ringBoost;
+    g.energy = e > 1 ? 1 : e;
+    if (power === 'repair') {
+      if (g.hull < g.ship.hull) g.hull++;
+      g.energy = 1;
+      return;
+    }
+    if (g.power === 'shield' && power !== 'shield') g.shield = false;
+    g.power = power;
+    g.powerUntil = this.tick + POWERS[power].duration;
+    if (power === 'shield') g.shield = true;
+  }
+
+  private dropShield(g: Glider): void {
+    g.shield = false;
+    if (g.power === 'shield') g.power = null;
   }
 
   private updateRings(): void {
@@ -738,7 +941,8 @@ export class World {
       const ring = this.rings[k];
       if (!ring.active) {
         if (this.tick >= ring.respawnTick) {
-          this.placeRing(ring);
+          ring.count++;
+          this.placeRing(ring, k);
           ring.active = true;
         }
         continue;
@@ -746,7 +950,8 @@ export class World {
       const c = ring.c;
       const n = ring.n;
       for (const g of this.gliders) {
-        if (!g.alive) continue;
+        // Each device only decides about the gliders it flies itself.
+        if (!g.alive || g.remote) continue;
         const sa = (g.pPrev.x - c.x) * n.x + (g.pPrev.y - c.y) * n.y + (g.pPrev.z - c.z) * n.z;
         const sb = (g.p.x - c.x) * n.x + (g.p.y - c.y) * n.y + (g.p.z - c.z) * n.z;
         if (!((sa <= 0 && sb > 0) || (sa >= 0 && sb < 0))) continue;
@@ -755,14 +960,11 @@ export class World {
         const iy = g.pPrev.y + (g.p.y - g.pPrev.y) * t - c.y;
         const iz = g.pPrev.z + (g.p.z - g.pPrev.z) * t - c.z;
         if (ix * ix + iy * iy + iz * iz > r2) continue;
-        const e = g.energy + FLIGHT.ringBoost;
-        g.energy = e > 1 ? 1 : e;
-        // A ring also repairs one hit.
-        if (g.hull < GUN.hull) g.hull++;
         g.rings++;
+        this.applyPower(g, ring.power);
         ring.active = false;
-        ring.respawnTick = this.tick + 8 * TICK_RATE;
-        this.events.push({ type: 'ring', id: g.id, ring: k });
+        ring.respawnTick = this.tick + RING_RESPAWN;
+        this.events.push({ type: 'power', id: g.id, power: ring.power, ring: k, n: ring.count });
         break;
       }
     }

@@ -1,7 +1,22 @@
 import { FLIGHT, DT, TAIL_OFFSET } from './config';
 import { AXIS_FWD, AXIS_UP, Quat, V3, clamp } from './math';
 import type { BotBrain } from './bot';
+import type { PowerId } from './powerups';
+import type { ShipSpec } from './ships';
 import type { CrashInfo, PilotInput } from './types';
+
+/** Flight factors for one tick: ship model, special and power-up together. */
+export interface FlightMods {
+  turn: number;
+  roll: number;
+  cruise: number;
+  boost: number;
+  /** Boost energy drain factor (0 = endless boost). */
+  drain: number;
+  slip: number;
+  /** Boost is on regardless of input and energy (afterburner). */
+  forceBoost: boolean;
+}
 
 export interface Glider {
   readonly id: number;
@@ -42,6 +57,21 @@ export interface Glider {
   shots: number;
   /** Hits landed on other gliders. */
   hits: number;
+  readonly ship: ShipSpec;
+  /** Tick from which the special can be used again. */
+  specialReady: number;
+  /** Tick when the running special effect ends. */
+  specialUntil: number;
+  /** Active power-up from a ring, or null. */
+  power: PowerId | null;
+  powerUntil: number;
+  /** The shield power-up takes the next hit or wall. */
+  shield: boolean;
+  /** Walls cannot hurt the ship before this tick (right after the shield took one). */
+  ghostUntil: number;
+  /** The gun is jammed by a shockwave until this tick. */
+  jamUntil: number;
+  readonly mods: FlightMods;
   /** Distance to the nearest wall in range, or a large number. */
   wallDist: number;
   readonly near: V3;
@@ -71,12 +101,13 @@ export function integrateGlider(g: Glider, inp: PilotInput): void {
   g.input.fire = !!inp.fire;
 
   // Turn right = rotate about local +Y by a negative angle.
-  if (sx !== 0) g.qb.multiply(tq.setAxisAngle(0, 1, 0, -sx * FLIGHT.yawRate * DT));
+  const m = g.mods;
+  if (sx !== 0) g.qb.multiply(tq.setAxisAngle(0, 1, 0, -sx * FLIGHT.yawRate * m.turn * DT));
   // Nose up = rotate about local +X by a negative angle.
-  if (sy !== 0) g.qb.multiply(tq.setAxisAngle(1, 0, 0, -sy * FLIGHT.pitchRate * DT));
+  if (sy !== 0) g.qb.multiply(tq.setAxisAngle(1, 0, 0, -sy * FLIGHT.pitchRate * m.turn * DT));
   // Roll right = rotate about local +Z by a positive angle.
   if (sr !== 0) {
-    g.qb.multiply(tq.setAxisAngle(0, 0, 1, sr * FLIGHT.rollRate * DT));
+    g.qb.multiply(tq.setAxisAngle(0, 0, 1, sr * FLIGHT.rollRate * m.roll * DT));
   } else if (g.assist) {
     autoHorizon(g);
   }
@@ -85,10 +116,11 @@ export function integrateGlider(g: Glider, inp: PilotInput): void {
   g.bank += (sx * FLIGHT.bankMax - g.bank) * FLIGHT.bankLerp;
   g.q.copy(g.qb).multiply(tq.setAxisAngle(0, 0, 1, g.bank));
 
-  const boost = inp.boost && g.energy > 0.02;
+  const boost = m.forceBoost || (inp.boost && g.energy > 0.02);
   g.boosting = boost;
-  g.energy = clamp(g.energy + (boost ? -FLIGHT.boostDrain : FLIGHT.boostRegen), 0, 1);
-  const target = boost ? FLIGHT.boostSpeed : FLIGHT.cruiseSpeed;
+  const drain = m.forceBoost ? 0 : FLIGHT.boostDrain * m.drain;
+  g.energy = clamp(g.energy + (boost ? -drain : FLIGHT.boostRegen), 0, 1);
+  const target = boost ? FLIGHT.boostSpeed * m.boost : FLIGHT.cruiseSpeed * m.cruise;
   g.speed += (target - g.speed) * FLIGHT.speedLerp;
 
   g.pPrev.copy(g.p);

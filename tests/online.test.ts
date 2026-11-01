@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GUN } from '../src/core/config';
-import { Quat } from '../src/core/math';
+import { Quat, V3 } from '../src/core/math';
 import type { CrashInfo, PilotInput } from '../src/core/types';
 import type { World } from '../src/core/world';
 import { GAME_VERSION, NEXT_ROUND_MS, OnlineMatch, type MatchSettings, type Msg, type Peer, type RoundResult, type Transport } from '../src/online/match';
@@ -15,7 +15,7 @@ class FakeNet {
     const node = new Node(this, { identity, name: identity, joinedAt: ++this.seq });
     node.match = new OnlineMatch(
       node,
-      { name: identity, assist: true },
+      { name: identity, assist: true, ship: 'trident' },
       { level: 'cloud-sea', mode: 'ffa', bots: 2, difficulty: 'rookie', ...settings },
       node.callbacks(),
       () => this.time,
@@ -338,7 +338,7 @@ describe('online match', () => {
     const straight: PilotInput = { steerX: 0, steerY: 0, roll: 0, boost: false };
     fly(net, 6, () => straight, 1);
     // Only Bravo's device may report hits on Bravo's glider.
-    a.match.receive('Mallory', { t: 'h', r: 1, id: 1, by: 0, k: 5, hull: 0 });
+    a.match.receive('Mallory', { t: 'h', r: 1, id: 1, by: 0, k: 5, hull: 0, sh: 0 });
     expect(a.match.world!.gliders[1].hull).toBe(GUN.hull);
     let seen = 0;
     for (let k = 0; k < 3; k++) {
@@ -358,13 +358,51 @@ describe('online match', () => {
     expect(wa.gliders[0].hits).toBe(GUN.hull);
   });
 
+  it('flies the ship each pilot picked; specials and ring bonuses reach everyone', () => {
+    const net = new FakeNet();
+    const a = net.join('Alpha', { bots: 0 });
+    const b = net.join('Bravo');
+    net.deliver();
+    b.match.setShip('halo');
+    net.deliver();
+    expect(a.match.shipOf('Bravo')).toBe('halo');
+    a.match.startRound();
+    net.deliver();
+    const wa = a.match.world!;
+    const wb = b.match.world!;
+    expect(wa.gliders[1].ship.id).toBe('halo');
+    expect(wb.gliders[1].ship.id).toBe('halo');
+    expect(wb.gliders[0].ship.id).toBe('trident');
+    // Rings are placed the same way on both devices.
+    expect(wb.rings.map((r) => [r.c.x, r.c.z, r.power])).toEqual(wa.rings.map((r) => [r.c.x, r.c.z, r.power]));
+    fly(net, 180);
+    // Bravo phases: Alpha's device knows.
+    fly(net, 1, (n) => (n === b ? { steerX: 0, steerY: 0, roll: 0, boost: false, special: true } : GENTLE), 1);
+    net.deliver();
+    expect(wa.phasing(wa.gliders[1])).toBe(true);
+    // Bravo flies through a ring on its own device: Alpha sees the ring taken and Bravo powered up.
+    const put = wb.gliders[1];
+    const ringB = wb.rings[0];
+    put.q.rotate(new V3(0, 0, 1), ringB.n);
+    ringB.c.copy(put.p).addScaled(ringB.n, 3);
+    wa.rings[0].c.copy(ringB.c);
+    wa.rings[0].n.copy(ringB.n);
+    fly(net, 20, () => ({ steerX: 0, steerY: 0, roll: 0, boost: false }), 1);
+    net.deliver();
+    expect(wb.rings[0].active).toBe(false);
+    expect(wa.rings[0].active).toBe(false);
+    expect(wa.gliders[1].rings).toBe(1);
+    const power = wb.gliders[1].power;
+    if (power) expect(wa.gliders[1].power).toBe(power);
+  });
+
   it('warns about pilots on another game version', () => {
     const net = new FakeNet();
     const a = net.join('Alpha');
     net.deliver();
-    a.match.receive('Zulu', { t: 'hello', v: 'p0.core-1', name: 'Zulu' });
+    a.match.receive('Zulu', { t: 'hello', v: 'p0.core-1', name: 'Zulu', ship: 'manta' });
     expect(a.mismatch).toEqual(['Zulu']);
-    a.match.receive('Yankee', { t: 'hello', v: GAME_VERSION, name: 'Yankee' });
+    a.match.receive('Yankee', { t: 'hello', v: GAME_VERSION, name: 'Yankee', ship: 'halo' });
     expect(a.mismatch).toEqual(['Zulu']);
   });
 
@@ -380,7 +418,7 @@ describe('online match', () => {
       mode: 'ffa',
       seed: 1,
       difficulty: 'ace',
-      pilots: [{ identity: 'Bravo', name: 'Bravo', bot: false, team: -1 }],
+      pilots: [{ identity: 'Bravo', name: 'Bravo', bot: false, team: -1, ship: 'trident' }],
     });
     expect(a.match.world).toBeNull();
     b.match.setSettings({ level: 'nebula' });
