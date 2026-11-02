@@ -1,13 +1,20 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { LEVELS } from '../src/core/levels';
 import type { Doc } from './firestore';
 import { json, type Store } from './handlers';
 
 /**
- * Anonymous visit statistics: every page load and every flight adds to a few
- * counters, all time and per day (Vienna time). Only totals are stored:
- * country and city (worked out by the host from the connection, never stored
- * as an address), device type, where the visitor came from and the level
- * flown. No IP addresses, no identifiers, nothing that points to a person.
+ * Visit statistics. Every page load and every flight adds to counters, all
+ * time and per day (Vienna time): country, city, device type, where the
+ * visitor came from and the level flown.
+ *
+ * To count unique and returning visitors each visit also updates one record
+ * per visitor. Its id is a pseudonymous key: a hash of the IP address and the
+ * browser with a secret salt, so the address itself is never stored and the
+ * key cannot be turned back into it. The record keeps a shortened address
+ * (last part removed), country, city, device, first and last visit and how
+ * often. Nothing is stored on the visitor's device. Everything is kept
+ * permanently. The list of visitors is only shown with the owner's key.
  */
 
 export interface StatsStore extends Store {
@@ -22,11 +29,40 @@ export interface Geo {
 export interface StatsDeps {
   store: StatsStore | null;
   geo?: Geo;
+  /** The visitor's IP address (only hashed and shortened, never stored as it is). */
+  ip?: string;
+  /** Secret salt for the visitor key. */
+  salt?: string;
+  /** The owner's key that unlocks the visitor list (env STATS_KEY). */
+  ownerKey?: string;
   now?: () => Date;
 }
 
 const DAYS = 'statsDays';
 const ALL = 'stats/all';
+const VISITORS = 'visitors';
+
+/** The shortened address that is shown: 84.115.12.x, or the first three groups of an IPv6 address. */
+export function maskIp(ip: string): string {
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/.exec(ip.trim());
+  if (v4) return `${v4[1]}.${v4[2]}.${v4[3]}.x`;
+  if (ip.includes(':')) {
+    const groups = ip.trim().split(':').filter((g) => g !== '');
+    return `${groups.slice(0, 3).join(':')}:…`;
+  }
+  return 'unknown';
+}
+
+/** Pseudonymous visitor key: the same IP address and browser give the same key, but it cannot be reversed. */
+export function visitorKey(ip: string, ua: string, salt: string): string {
+  return createHash('sha256').update(`${salt}|${ip}|${ua}`).digest('hex').slice(0, 24);
+}
+
+function sameKey(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
 
 /** Turns any text into a safe field name part: letters, digits and _ only. */
 export function fieldKey(raw: string, max = 40): string {
@@ -85,11 +121,42 @@ export async function handleVisit(req: Request, deps: StatsDeps): Promise<Respon
     dayInc[`r_${host ? fieldKey(host) : 'direct'}`] = 1;
   }
   const n = Number(day.replace(/-/g, ''));
+  const updates: Parameters<StatsStore['increment']>[0] = [];
   try {
-    await store.increment([
-      { path: ALL, inc, min: { first: n } },
-      { path: `${DAYS}/${day}`, inc: dayInc, set: { day: n } },
-    ]);
+    if (body.kind === 'visit' && deps.ip && deps.salt) {
+      // One record per visitor: new, back on another day, or again the same day.
+      const ua = req.headers.get('user-agent') ?? '';
+      const key = visitorKey(deps.ip, ua, deps.salt);
+      const seen = await store.get(`${VISITORS}/${key}`);
+      const lastDay = typeof seen?.last === 'number' ? seen.last : 0;
+      const newDay = !seen || lastDay < n;
+      if (!seen) {
+        inc.visitors = 1;
+        dayInc.visitors = 1;
+        dayInc.newVisitors = 1;
+      } else if (newDay) {
+        inc.returning = 1;
+        dayInc.visitors = 1;
+        dayInc.returning = 1;
+      }
+      const vInc: Record<string, number> = { visits: 1 };
+      if (newDay) vInc.days = 1;
+      updates.push({
+        path: `${VISITORS}/${key}`,
+        inc: vInc,
+        set: {
+          ip: maskIp(deps.ip),
+          country: typeof deps.geo?.country === 'string' ? deps.geo.country.slice(0, 2).toUpperCase() : '',
+          city: typeof deps.geo?.city === 'string' ? deps.geo.city.slice(0, 60) : '',
+          device: deviceOf(ua),
+          last: n,
+          lastMs: now.getTime(),
+        },
+        min: { first: n },
+      });
+    }
+    updates.push({ path: ALL, inc, min: { first: n } }, { path: `${DAYS}/${day}`, inc: dayInc, set: { day: n } });
+    await store.increment(updates);
   } catch {
     return json(200, { ok: false, error: 'store' });
   }
@@ -112,30 +179,71 @@ function groups(d: Doc, prefixes: Record<string, string>): Record<string, Record
 
 const PREFIXES = { c: 'countries', d: 'devices', l: 'levels', m: 'modes', t: 'cities', r: 'sources' };
 
-/** GET /api/stats: all-time totals and the last 60 days. */
+const dayText = (n: unknown) => {
+  const t = String(n ?? '');
+  return t.length === 8 ? `${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}` : '';
+};
+
+/**
+ * GET /api/stats: totals, visitors (unique, returning), the last 60 days, the
+ * months, and with ?key=<owner key> also the list of visitors.
+ */
 export async function handleStats(req: Request, deps: StatsDeps): Promise<Response> {
   if (req.method !== 'GET') return json(405, { error: 'method' });
   const store = deps.store;
   if (!store) return json(200, { ok: false, error: 'offline' });
+  const given = new URL(req.url).searchParams.get('key') ?? '';
+  const owner = !!deps.ownerKey && !!given && sameKey(given, deps.ownerKey);
   try {
-    const [all, days] = await Promise.all([store.get(ALL), store.top(DAYS, 'day', 60)]);
+    const [all, days, returningVisitors, list, loyal] = await Promise.all([
+      store.get(ALL),
+      store.top(DAYS, 'day', 400),
+      store.countGreater(VISITORS, 'days', 1),
+      owner ? store.top(VISITORS, 'lastMs', 100) : Promise.resolve([] as Doc[]),
+      owner ? store.top(VISITORS, 'visits', 15) : Promise.resolve([] as Doc[]),
+    ]);
     const a = all ?? {};
     const recent: Doc = {};
     for (const d of days.slice(0, 30)) {
       for (const [k, v] of Object.entries(d)) if (typeof v === 'number' && k !== 'day') recent[k] = ((recent[k] as number) ?? 0) + v;
     }
-    const first = typeof a.first === 'number' ? String(a.first) : '';
+    // Months from the stored days (kept forever).
+    const months = new Map<string, { visits: number; visitors: number; flights: number }>();
+    for (const d of days) {
+      const m = dayText(d.day).slice(0, 7);
+      if (!m) continue;
+      const row = months.get(m) ?? { visits: 0, visitors: 0, flights: 0 };
+      row.visits += Number(d.total ?? 0);
+      row.visitors += Number(d.visitors ?? 0);
+      row.flights += Number(d.flights ?? 0);
+      months.set(m, row);
+    }
+    const visitor = (v: Doc) => ({
+      ip: String(v.ip ?? ''),
+      country: String(v.country ?? ''),
+      city: String(v.city ?? ''),
+      device: String(v.device ?? ''),
+      visits: Number(v.visits ?? 0),
+      days: Number(v.days ?? 0),
+      first: dayText(v.first),
+      last: typeof v.lastMs === 'number' ? new Date(v.lastMs).toISOString() : dayText(v.last),
+    });
     return json(200, {
       ok: true,
       total: Number(a.total ?? 0),
       flights: Number(a.flights ?? 0),
-      since: first ? `${first.slice(0, 4)}-${first.slice(4, 6)}-${first.slice(6, 8)}` : null,
+      visitors: Number(a.visitors ?? 0),
+      returningVisitors,
+      returningVisits: Number(a.returning ?? 0),
+      since: dayText(a.first) || null,
       all: groups(a, PREFIXES),
       recent: groups(recent, PREFIXES),
-      days: days.map((d) => {
-        const n = String(d.day ?? '');
-        return { day: `${n.slice(0, 4)}-${n.slice(4, 6)}-${n.slice(6, 8)}`, visits: Number(d.total ?? 0), flights: Number(d.flights ?? 0) };
-      }),
+      days: days.slice(0, 60).map((d) => ({ day: dayText(d.day), visits: Number(d.total ?? 0), visitors: Number(d.visitors ?? 0), flights: Number(d.flights ?? 0) })),
+      months: [...months.entries()].map(([month, r]) => ({ month, ...r })),
+      owner,
+      ownerKeySet: !!deps.ownerKey,
+      list: list.map(visitor),
+      loyal: loyal.map(visitor),
     });
   } catch {
     return json(200, { ok: false, error: 'store' });

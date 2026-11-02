@@ -522,6 +522,12 @@ export class GameView {
     return this.dogMode;
   }
 
+  /** Glider i flies as a dachshund (the official ship, or your cheat skin). */
+  isDog(i: number): boolean {
+    if (i === this.player && this.dogMode) return true;
+    return this.world?.gliders[i]?.ship.id === 'dachshund';
+  }
+
   /** Remembers the current state so frames between ticks can be interpolated. */
   capturePrev(): void {
     const w = this.world;
@@ -549,8 +555,9 @@ export class GameView {
         this.spawnBurst(g.p.x, g.p.y, g.p.z, e.type === 'shield' ? POWERS.shield.color : 0xffffff, 0.25);
       } else if (e.type === 'bolt-strike') {
         this.flashLevel = 1;
-      } else if (e.type === 'shot' && e.id === this.player && this.dogMode) {
-        (this.pilots[this.player]?.ship as DogMesh | undefined)?.bark?.();
+      } else if (e.type === 'shot') {
+        // Dachshunds open their mouths for every bone.
+        (this.pilots[e.id]?.ship as Partial<DogMesh> | undefined)?.bark?.();
       }
     }
   }
@@ -914,7 +921,7 @@ export class GameView {
     for (const s of w.shots) {
       if (!s.alive) continue;
       let v = this.shotViews.get(s.key);
-      if (!v && s.owner === this.player && this.dogMode) {
+      if (!v && this.isDog(s.owner)) {
         // A bone instead of a shot.
         const core = new THREE.Mesh(boneGeometry(), new THREE.MeshStandardMaterial({ color: 0xf4ead0, emissive: 0x4a4030, roughness: 0.55 }));
         const glow = new THREE.Sprite(

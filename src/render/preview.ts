@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { isShip, type ShipId } from '../core/ships';
+import type { DogMesh } from './dachshund';
 import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { sharedTextures } from './textures';
 
@@ -59,6 +60,8 @@ export class ShipPreviews {
     let s = this.ships.get(id);
     if (!s) {
       s = makeShip(id, 0xffe45c, sharedTextures().glow);
+      // The dachshund is slimmer than the ships: show it a little bigger.
+      if (id === 'dachshund') s.group.scale.setScalar(1.45);
       for (const f of s.flames) f.scale.multiplyScalar(0.9);
       this.ships.set(id, s);
     }
@@ -79,6 +82,8 @@ export class ShipPreviews {
       const s = this.ship(id);
       this.scene.add(s.group);
       s.group.rotation.set(0.12 * Math.sin(this.t * 0.9), this.t * 0.6 + SHIP_PHASE[id], 0.08 * Math.sin(this.t * 1.3));
+      // The dachshund gallops, wags and looks around in the hangar too.
+      (s as Partial<DogMesh>).animate?.(this.t, 1 / 30, 24, false);
       r.render(this.scene, this.camera);
       this.scene.remove(s.group);
       const ctx = c.getContext('2d');
@@ -97,4 +102,4 @@ export class ShipPreviews {
   }
 }
 
-const SHIP_PHASE: Record<ShipId, number> = { trident: 0, manta: 1.6, halo: 3.1, bulwark: 4.7 };
+const SHIP_PHASE: Record<ShipId, number> = { trident: 0, manta: 1.6, halo: 3.1, bulwark: 4.7, dachshund: 2.3 };

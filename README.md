@@ -8,17 +8,18 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 
 - Free flight (turn, pitch, roll). The light wall rolls with your glider: fly level and it stands upright, roll 90° and it lies flat, keep rolling and it twists into a spiral.
 - Ten levels, each with its own look, climbing from the sky into deep space: Cloud Sea, Storm Eye (lightning, updraft), Frost Heights, Jet Stream (wind), Aurora, Orbit, Moon Shadow, Ring World, Nebula (plasma bolts) and Lattice Core (a core that pulls you in). Win a level to open the next one.
-- Cheats for testing: press 1 five times, or tap the score five times, to jump to the next level. Type 2222, or tap the top right corner five times on a touch screen, to fly the next ship. Type 33333 (or tap the top left corner five times) and your glider becomes a brown dachshund galloping through the air: tail wagging, ears flapping, looking left, right and back over its shoulder, and spitting bones instead of shots with a little "wuff". It stays a dachshund in every game until you type 33333 again (only you see it; online the others see your ship).
+- Cheats for testing (keyboard only; on phones and tablets they are switched off because they were too easy to trigger by accident): press 1 five times, or click the score five times, to jump to the next level; 2222 flies the next ship; 33333 turns your glider into the dachshund (and back) in every game; 99999 in a menu shows the visit statistics.
 - 1 to 7 bots in three difficulties (Rookie, Pilot, Ace). They fly smooth curves and only turn hard when a wall is close. The difficulty also sets the pace for everyone in the round: on Rookie all ships fly at 60% speed, on Pilot at normal speed, on Ace at 125% (online too, from the host's choice).
 - The arenas are big (twice the size they started with) and the arena shield closes in after 30 seconds.
 - Every ship casts a shadow on the floor, and yours also on the nearest shield wall and the ceiling, so you can feel how far away the grid is.
 - Boost: hold to speed up, refill it by flying close along walls or through rings.
 - Gun: shots fly straight through walls and only hit other ships, curving a little towards a ship in front of them. Three hits bring a ship down, and the gun overheats when you hold the trigger too long. Bots shoot too, never at their own team.
-- Four ships to choose from in the hangar, each with its own handling and a special ability (key C):
+- Five ships to choose from in the hangar, each with its own handling and a special ability (key C):
   - **Trident** (gunship): Trident Burst fires a fan of five shots; its shots fly 20% faster.
   - **Manta** (interceptor): Afterburner, two seconds at top speed; sharpest turns, faster slipstream.
   - **Halo** (phase runner): Phase Shift, 1.5 seconds flying through walls, obstacles and shots; rolls 40% faster.
   - **Bulwark** (heavy): Shockwave wipes out enemy shots nearby and jams their guns; takes five hits.
+  - **Dachshund** (good boy): a brown dachshund galloping through the air, tail wagging, ears flapping, looking around when it is not shooting. It spits bones instead of shots; Bone Barrage spits a fan of five. Turns tighter than any ship.
 - Bonus rings: fly through one for boost and the bonus it shows by colour: triple shot, big wall, shield, cool gun, turbo, seeker shots or repair. Rings work online too.
 - Light walls are twice as high as before. They leave the ship narrow and spread out behind it.
 - Obstacles inside the arena, only a few per level and mostly glass: clear in the middle, glowing at the edges, some grown out of rock. Glass islands with waterfalls and a glass whale (Cloud Sea), glass spires (Storm Eye), ice crystals and a glass rock with a waterfall (Frost Heights), a glass turbine ring (Jet Stream), an arch of light and a waterfall geode (Aurora), a glass space station with a satellite (Orbit), rocks with glass crystals (Moon Shadow), glass gates (Ring World), glass bubbles with glowing hearts (Nebula) and glass beams (Lattice Core). Flying into one is deadly and shots fizzle on them; flying through a waterfall only makes the water splash. They move the same way on every device, so they work online too.
@@ -43,7 +44,9 @@ Per round: 10 points per second in the air, 100 per pilot you outlast, 250 per p
 
 ## Visit statistics
 
-Every page load and every flight add to anonymous counters (`POST /api/visit`): all time and per day (Vienna time), by country, city, device type, the site visitors came from, level and solo or online. Only totals are stored in Firestore (`stats/all`, `statsDays/<day>`), no IP addresses and nothing per visitor; country and city come from Netlify's geo data at that moment. Type 99999 in a menu (or tap the version number five times) to see them: the number of visits on top, then visits per day and the breakdowns. `GET /api/stats` returns the same numbers.
+Every page load and every flight add to counters (`POST /api/visit`): all time and per day (Vienna time), by country, city, device type, the site visitors came from, level and solo or online. Unique and returning visitors are counted with one record per visitor in `visitors/<key>`, where the key is a salted hash of IP address and browser (salt: `STATS_SALT`, or derived from the Firebase key). The record keeps the IP address shortened (84.115.12.x), country, city, device, first and last visit and visit count; the full address is never stored, nothing is stored on the device. Everything is kept permanently in Firestore (`stats/all`, `statsDays/<day>`, `visitors/<key>`).
+
+Type 99999 in a menu (keyboard) to see them: the number of visits on top, then visitors, returning visitors, countries and flights, visits per day, months, countries and cities, and more. The list of visitors with their shortened IP addresses only shows with the owner's password: set `STATS_KEY` in Netlify and enter it on the statistics screen once (it is remembered in that browser). `GET /api/stats` returns the totals; `GET /api/stats?key=<STATS_KEY>` also the visitor lists.
 
 ## Online leaderboard
 

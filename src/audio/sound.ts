@@ -446,13 +446,13 @@ export class Sound {
   }
 
   /** The dachshund spits a bone: a short "wuff". */
-  bark(): void {
+  bark(gain = 1): void {
     const ctx = this.ctx;
-    if (!ctx) return;
+    if (!ctx || gain <= 0.01) return;
     const t = ctx.currentTime;
-    this.tone(560, 0.1, 'sawtooth', 0.07, t, 240);
-    this.tone(300, 0.12, 'square', 0.05, t + 0.01, 150);
-    this.noiseBurst(0.1, 'bandpass', 1400, 500, 0.12, t);
+    this.tone(560, 0.1, 'sawtooth', 0.07 * gain, t, 240);
+    this.tone(300, 0.12, 'square', 0.05 * gain, t + 0.01, 150);
+    this.noiseBurst(0.1, 'bandpass', 1400, 500, 0.12 * gain, t);
   }
 
   /** Flying through a waterfall. */

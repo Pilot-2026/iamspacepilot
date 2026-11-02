@@ -1,6 +1,6 @@
 import { LEVELS } from '../core/levels';
 import type { LevelId } from '../core/types';
-import type { Stats } from '../net/stats';
+import type { Stats, Visitor } from '../net/stats';
 import { esc } from './html';
 
 /**
@@ -97,22 +97,81 @@ const level = (k: string) => {
 };
 const device = (k: string) => ({ mobile: 'Phone', tablet: 'Tablet', desktop: 'Computer' })[k] ?? esc(k);
 
+const when = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return esc(iso);
+  return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Vienna' });
+};
+
+const place = (v: Visitor) => `${flag(v.country || 'XX')} ${esc(v.city || country(v.country || 'XX'))}`;
+
+/** A compact table of visitors (owner only). */
+function visitorTable(rows: Visitor[], title: string, note: string): string {
+  if (!rows.length) return `<h3 class="st-h">${title}</h3><p class="m-hint">No visitors recorded yet.</p>`;
+  const body = rows
+    .map(
+      (v) =>
+        `<tr><td>${when(v.last)}</td><td class="st-ip">${esc(v.ip)}</td><td>${place(v)}</td><td>${device(v.device)}</td><td class="num">${nf.format(v.visits)}</td><td class="num">${nf.format(v.days)}</td><td>${esc(v.first)}</td></tr>`,
+    )
+    .join('');
+  return `<h3 class="st-h">${title} <small>${note}</small></h3>
+  <div class="keys-wrap st-scroll"><table class="keys st-table"><thead><tr><th>Last visit</th><th>IP address</th><th>Place</th><th>Device</th><th>Visits</th><th>Days</th><th>First visit</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+/** Visitor list, or the box to unlock it with the owner's password. */
+function ownerPart(s: Stats): string {
+  if (s.owner) {
+    return `${visitorTable(s.list, 'Latest visitors', `last ${s.list.length}`)}
+    ${visitorTable(s.loyal, 'Most loyal visitors', 'most visits')}
+    <p class="m-hint">IP addresses are stored shortened (last part removed). A visitor is recognised by a key made from the address and the browser, so a new network or browser counts as a new visitor. <button class="linkish" data-act="stats-lock">Lock the list on this device</button></p>`;
+  }
+  const how = s.ownerKeySet
+    ? 'Enter your owner password to see the visitors with their IP addresses.'
+    : 'To see the visitors with their IP addresses, set an owner password: in Netlify add the environment variable STATS_KEY, deploy again, then enter it here.';
+  return `<h3 class="st-h">Visitors <small>owner only</small></h3>
+  <p class="m-hint">${how}</p>
+  <div class="st-unlock"><input id="stats-key" type="password" autocomplete="current-password" placeholder="Owner password" aria-label="Owner password"><button class="btn" data-act="stats-unlock">Show visitors</button></div>`;
+}
+
 export function statsHtml(s: Stats): string {
   const today = s.days[0];
   const last7 = s.days.slice(0, 7).reduce((n, d) => n + d.visits, 0);
   const since = s.since ? new Date(`${s.since}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const countries = Object.keys(s.all.countries).filter((k) => k !== 'XX').length;
+  const backShare = s.visitors ? Math.round((s.returningVisitors / s.visitors) * 100) : 0;
+  const tile = (value: string, label: string, sub = '') => `<div class="st-tile"><b>${value}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const months = s.months
+    .slice(0, 12)
+    .map((m) => {
+      const d = new Date(`${m.month}-15T12:00:00Z`);
+      const name = Number.isNaN(d.getTime()) ? m.month : d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      return `<tr><td>${name}</td><td class="num">${nf.format(m.visits)}</td><td class="num">${nf.format(m.visitors)}</td><td class="num">${nf.format(m.flights)}</td></tr>`;
+    })
+    .join('');
   return `<div class="st-hero"><b>${nf.format(s.total)}</b><span>visits so far</span></div>
-  <p class="st-sub">${since ? `Since ${since} · ` : ''}${nf.format(s.flights)} flights · ${today ? `${nf.format(today.visits)} today · ` : ''}${nf.format(last7)} in the last 7 days</p>
-  <h3 class="st-h">Visits per day <small>last 30 days</small></h3>
-  ${dayChart(s.days)}
-  ${dayTable(s.days)}
+  <p class="st-sub">${since ? `Since ${since} · ` : ''}${today ? `${nf.format(today.visits)} today · ` : ''}${nf.format(last7)} in the last 7 days</p>
+  <div class="st-tiles">
+    ${tile(nf.format(s.visitors), 'Visitors', 'different people')}
+    ${tile(nf.format(s.returningVisitors), 'Came back', `${backShare}% of visitors · ${nf.format(s.returningVisits)} return visits`)}
+    ${tile(nf.format(countries), 'Countries')}
+    ${tile(nf.format(s.flights), 'Flights')}
+  </div>
+  <div class="st-two">
+    <section><h3 class="st-h">Visits per day <small>last 30 days</small></h3>${dayChart(s.days)}${dayTable(s.days)}</section>
+    <section><h3 class="st-h">Months <small>stored for good</small></h3>${
+      months ? `<div class="keys-wrap"><table class="keys st-table"><thead><tr><th>Month</th><th>Visits</th><th>Visitors</th><th>Flights</th></tr></thead><tbody>${months}</tbody></table></div>` : '<p class="m-hint">No data yet.</p>'
+    }</section>
+  </div>
   <div class="st-grid">
     <section>${bars('Countries <small>all time</small>', s.all.countries, (k) => `${flag(k)} ${esc(country(k))}`, 12)}</section>
     <section>${bars('Cities <small>last 30 days</small>', s.recent.cities, city, 12)}</section>
+  </div>
+  ${ownerPart(s)}
+  <div class="st-grid">
     <section>${bars('Devices <small>all time</small>', s.all.devices, device, 3)}</section>
     <section>${bars('Came from <small>last 30 days</small>', s.recent.sources, source, 8)}</section>
     <section>${bars('Flights by level <small>all time</small>', s.all.levels, level, 10)}</section>
     <section>${bars('Solo or online <small>all time</small>', s.all.modes, (k) => (k === 'online' ? 'Online' : 'Solo'), 2)}</section>
   </div>
-  <p class="m-hint">Anonymous: only totals are counted, no addresses and nothing that points to a person. Country and city come from the connection and are never stored with anything else.</p>`;
+  <p class="m-hint">All numbers are stored permanently. Full IP addresses are never stored.</p>`;
 }

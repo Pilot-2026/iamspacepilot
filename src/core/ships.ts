@@ -1,10 +1,10 @@
 /**
- * The four ship models. Each flies a little differently and has one special
+ * The five ship models (four ships and a dachshund). Each flies a little differently and has one special
  * ability with a cooldown (key C). All numbers are factors on the base flight
  * model, so the simulation stays the same on every device.
  */
 
-export type ShipId = 'trident' | 'manta' | 'halo' | 'bulwark';
+export type ShipId = 'trident' | 'manta' | 'halo' | 'bulwark' | 'dachshund';
 export type SpecialKind = 'burst' | 'afterburner' | 'phase' | 'shockwave';
 
 export interface ShipSpec {
@@ -133,9 +133,32 @@ export const SHIPS: Readonly<Record<ShipId, ShipSpec>> = {
     },
     stats: { speed: 0.5, agility: 0.4, armor: 1, firepower: 0.7 },
   },
+  dachshund: {
+    id: 'dachshund',
+    name: 'Dachshund',
+    model: 'WAU-5',
+    role: 'Good boy',
+    hull: 3,
+    turn: 1.2,
+    roll: 1.15,
+    cruise: 0.98,
+    boost: 1.02,
+    slip: 1.2,
+    shotSpeed: 1.1,
+    heat: 0.9,
+    trait: 'Turns tighter than any ship and spits bones instead of shots. Gallops through the air with its ears flapping.',
+    special: {
+      kind: 'burst',
+      name: 'Bone Barrage',
+      text: 'Spits a fan of five bones at once.',
+      cooldown: 9 * 60,
+      duration: 0,
+    },
+    stats: { speed: 0.6, agility: 1, armor: 0.5, firepower: 0.65 },
+  },
 };
 
-export const SHIP_ORDER: readonly ShipId[] = ['trident', 'manta', 'halo', 'bulwark'];
+export const SHIP_ORDER: readonly ShipId[] = ['trident', 'manta', 'halo', 'bulwark', 'dachshund'];
 
 export const isShip = (v: unknown): v is ShipId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(SHIPS, v);
 

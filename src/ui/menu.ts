@@ -10,8 +10,7 @@ import { hangarScreen } from './hangar';
 import { playIntro } from './intro';
 import { ARROW, esc, frame, ordinal, siteFooter, wordmark } from './html';
 import { statsHtml } from './stats-view';
-import type { StatsResult } from '../net/stats';
-import { countTap } from '../input/input';
+import { setStatsKey, type StatsResult } from '../net/stats';
 import {
   clampBots,
   codeScreen,
@@ -132,7 +131,6 @@ export class Menu {
   /** Invite link opened before a callsign was chosen. */
   private pendingJoin = '';
   private statsReturn: Screen = 'main';
-  private readonly verTaps: number[] = [];
   /** Where the hangar returns to. */
   private hangarReturn: Screen = 'main';
 
@@ -462,6 +460,10 @@ export class Menu {
     } else if (e.key === 'Enter' && (e.target as HTMLElement).id === 'callsign') {
       e.preventDefault();
       this.submitCallsign();
+    } else if (e.key === 'Enter' && (e.target as HTMLElement).id === 'stats-key') {
+      e.preventDefault();
+      setStatsKey((e.target as HTMLInputElement).value.trim());
+      this.loadStats();
     } else if (e.key === 'Enter' && (e.target as HTMLElement).id === 'gamecode') {
       e.preventDefault();
       this.submitCode();
@@ -654,8 +656,15 @@ export class Menu {
         this.back = 'settings';
         this.show('callsign');
         break;
-      case 'ver':
-        if (countTap(this.verTaps)) this.showStats();
+      case 'stats-unlock': {
+        const input = this.root.querySelector('#stats-key') as HTMLInputElement | null;
+        setStatsKey(input?.value.trim() ?? '');
+        this.loadStats();
+        break;
+      }
+      case 'stats-lock':
+        setStatsKey('');
+        this.loadStats();
         break;
       case 'board-level':
         this.boardLevel = val as LevelId;
@@ -883,7 +892,7 @@ export class Menu {
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span class="m-ver" data-act="ver">v0.12 · Good boy</span><span>Fly free. Leave light behind.</span>`,
+      `<span class="m-ver">v0.13 · Good boy</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 

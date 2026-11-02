@@ -3,7 +3,7 @@
  * flight on the server, so client and server must run the same rules. Bump this
  * whenever a change alters how a flight plays out.
  */
-export const CORE_VERSION = 'core-7';
+export const CORE_VERSION = 'core-8';
 
 /** Version of the online message format. Devices with different versions cannot play together. */
 export const NET_PROTOCOL = 'p4';
