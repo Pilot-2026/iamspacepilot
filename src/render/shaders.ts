@@ -181,6 +181,32 @@ void main() {
   gl_FragColor = vec4(c, a);
 }`;
 
+/**
+ * The glowing beam in the middle of a wall: a narrow strip across it, bright
+ * in the middle. Seen from straight behind, where the wall itself is only an
+ * edge, the beam still shows your wall coming straight out of the tail.
+ */
+export const ribbonBeamFrag = /* glsl */ `
+uniform vec3 uColor;
+uniform vec3 uFogColor;
+uniform float uFogFar;
+uniform float uAdditive;
+uniform float uDim;
+varying float vSide;
+varying float vFlash;
+varying float vDist;
+void main() {
+  float e = abs(vSide);
+  float core = 1.0 - smoothstep(0.05, 1.0, e);
+  float a = (0.3 + 0.7 * core) * uDim;
+  vec3 c = mix(uColor, vec3(1.0), clamp(core * 0.6 + vFlash * 0.4, 0.0, 1.0));
+  a = min(1.0, a + vFlash * 0.3);
+  float d = clamp(vDist / uFogFar, 0.0, 1.0);
+  a *= 1.0 - d * 0.75;
+  c = mix(c, uFogColor, d * 0.6 * (1.0 - uAdditive));
+  gl_FragColor = vec4(c, a);
+}`;
+
 /** Value noise and fbm, shared by the planet shaders. */
 const noiseChunk = /* glsl */ `
 float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }

@@ -667,7 +667,8 @@ class App {
             this.hud.message('Crashed', this.causeText(w, e.crash, true), 2);
             this.sound.stopEngine();
             this.touch.hide();
-            this.endAt = performance.now() + 2200;
+            // Time to watch the ship crumble before the results.
+            this.endAt = performance.now() + 2600;
             this.state = 'ending';
           }
           break;

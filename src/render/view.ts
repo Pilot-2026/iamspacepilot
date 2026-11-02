@@ -11,6 +11,7 @@ import { boneGeometry, makeDog, type DogMesh } from './dachshund';
 import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { createLevelEnv, type LevelEnv } from './levels';
 import { RibbonView } from './ribbon';
+import { Shatter } from './shatter';
 import { sharedTextures } from './textures';
 
 // Colours are written exactly as they should appear on screen.
@@ -45,12 +46,11 @@ interface Rig {
 }
 const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 /**
- * Behind the glider, a little to its right (local -X) and above the top of
- * the wall: straight behind you would see your own wall edge-on, from here it
- * comes out of the tail as a narrow band. The aim moves along a bit, so the
- * glider stays close to the middle.
+ * Behind the glider, only slightly to its right (local -X) and a little above
+ * the top of the wall: your wall and its glowing beam come straight out of the
+ * tail. The aim is a little lower, so the glider stays where it was on screen.
  */
-const CHASE: Rig = { cam: v3(-1.3, 5.4, -14), look: v3(0.5, 1.2, 14), up: 'ship', follow: 7 };
+const CHASE: Rig = { cam: v3(-0.4, 6.0, -14), look: v3(0.1, 0.8, 14), up: 'ship', follow: 7 };
 const RIGS: Readonly<Record<Exclude<ViewMode, 'cockpit'>, Rig>> = {
   chase: CHASE,
   clean: CHASE,
@@ -62,6 +62,8 @@ const RIGS: Readonly<Record<Exclude<ViewMode, 'cockpit'>, Rig>> = {
 };
 /** The pilot's eye inside the ship. */
 const SEAT = v3(0, 0.75, 0.85);
+/** Ticks the camera keeps watching your explosion before it looks at the others (2.5 s). */
+const CRASH_WATCH_TICKS = 150;
 const TURN = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI);
 
 interface PilotView {
@@ -196,6 +198,8 @@ export class GameView {
   private readonly shotGeo: THREE.CylinderGeometry;
   private readonly reticle: THREE.Sprite;
   private bursts: Burst[] = [];
+  /** Ships crumbling after a crash. */
+  private shatters: Shatter[] = [];
   private readonly dust: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
   private readonly dustPos: Float32Array;
   private flashLevel = 0;
@@ -592,15 +596,31 @@ export class GameView {
     if (id === this.player) this.shake = Math.max(this.shake, 0.4);
   }
 
-  /** Explosion and dimmed wall where glider id went down. */
+  /** Explosion and dimmed wall where glider id went down: the ship crumbles into pieces in every direction. */
   crashAt(id: number): void {
     const w = this.world;
     const pv = this.pilots[id];
     if (!w || !pv) return;
     const g = w.gliders[id];
     this.spawnBurst(g.p.x, g.p.y, g.p.z, pv.color);
+    this.spawnBurst(g.p.x, g.p.y, g.p.z, 0xffa64d, 0.55);
+    pv.group.position.copy(pv.p);
+    pv.group.quaternion.copy(pv.q);
+    const vel = this.tv.copy(FWD).applyQuaternion(pv.q).multiplyScalar(g.speed);
+    const s = new Shatter(pv.ship.group, pv.p, vel);
+    this.scene.add(s.object);
+    this.shatters.push(s);
     pv.ribbon.setDim(0.6);
     if (id === this.player) this.shake = 1;
+  }
+
+  private updateShatters(dt: number): void {
+    for (let i = this.shatters.length - 1; i >= 0; i--) {
+      const s = this.shatters[i];
+      if (s.update(dt)) continue;
+      s.dispose();
+      this.shatters.splice(i, 1);
+    }
   }
 
   /** Engine flames, phase shimmer, shield bubble and power-up glow of glider i. */
@@ -716,6 +736,7 @@ export class GameView {
     this.updateBolts(w);
     this.updateShots(w, alpha);
     this.updateBursts(dt);
+    this.updateShatters(dt);
     this.updateCamera(w, dt);
     this.updateReticle(w);
 
@@ -752,7 +773,9 @@ export class GameView {
   private updateCamera(w: World, dt: number): void {
     const g = w.gliders[this.player];
     const pv = this.pilots[this.player];
-    const chase = g.alive || w.tick - g.crashTick < 50;
+    // After a crash the camera stays at the explosion a while and slowly pulls back, so you see your ship crumble.
+    const sinceCrash = g.alive ? 0 : w.tick - g.crashTick;
+    const chase = g.alive || sinceCrash < CRASH_WATCH_TICKS;
     const cockpit = chase && g.alive && this.viewMode === 'cockpit' && !!this.cockpit;
     if (cockpit !== this.cockpitOn) this.snapCamera = true;
     this.cockpitOn = cockpit;
@@ -784,7 +807,8 @@ export class GameView {
         const rig = RIGS[this.viewMode === 'cockpit' ? 'chase' : this.viewMode];
         this.orbitE.set(this.pitch, this.yaw, 0, 'YXZ');
         const oq = this.orbitQ.setFromEuler(this.orbitE);
-        target.copy(rig.cam).applyQuaternion(oq).multiplyScalar(this.zoom).applyQuaternion(pv.qb).add(pv.p);
+        const back = g.alive ? 1 : 1 + 0.7 * Math.min(1, sinceCrash / 90);
+        target.copy(rig.cam).applyQuaternion(oq).multiplyScalar(this.zoom * back).applyQuaternion(pv.qb).add(pv.p);
         look.copy(rig.look).applyQuaternion(oq).multiplyScalar(this.zoom).applyQuaternion(pv.qb).add(pv.p);
         up.copy(rig.up === 'ship' ? UP : FWD).applyQuaternion(oq).applyQuaternion(pv.qb);
         k = 1 - Math.exp(-dt * rig.follow);
@@ -1137,6 +1161,8 @@ export class GameView {
 
   /** Removes everything that belongs to the current round. */
   clear(): void {
+    for (const s of this.shatters) s.dispose();
+    this.shatters = [];
     for (const pv of this.pilots) {
       this.scene.remove(pv.group, pv.ribbon.mesh);
       pv.ribbon.dispose();
