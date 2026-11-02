@@ -108,6 +108,8 @@ export class OnlineMatch {
   private hostFlying = false;
   world: World | null = null;
   pilots: NetPilot[] = [];
+  /** Difficulty of the current round; the host may already have picked another one for the next. */
+  roundDifficulty: Difficulty = 'pilot';
   /** Index of this device's glider in the current round, -1 when watching. */
   local = -1;
   hostIdentity = '';
@@ -280,6 +282,7 @@ export class OnlineMatch {
     this.nextRoundAt = 0;
     this.settings = { ...this.settings, level: m.level, mode: m.mode, difficulty: m.difficulty };
     this.pilots = m.pilots;
+    this.roundDifficulty = m.difficulty;
     this.local = m.pilots.findIndex((p) => !p.bot && p.identity === this.t.self);
     const host = this.isHost;
     const setup: WorldSetup = {

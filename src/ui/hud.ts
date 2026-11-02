@@ -1,8 +1,11 @@
 import { boundaryDistance } from '../core/arena';
+import type { BoardRow } from '../online/board';
 import { V3 } from '../core/math';
 import { POWERS } from '../core/powerups';
 import type { World } from '../core/world';
 import { countTap } from '../input/input';
+import { esc } from './html';
+import { eventTime } from './mic';
 import { formatScore, formatTime } from './menu';
 
 const local = new V3();
@@ -14,6 +17,11 @@ function hex(c: number): string {
 
 const EYE_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>';
+
+const MIC_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+const MIC_SMALL =
+  '<svg class="b-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-label="talking"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
 
 /** Which parts of the HUD a camera view keeps. */
 export type HudView = 'normal' | 'cockpit' | 'clean';
@@ -71,6 +79,12 @@ export class Hud {
   readonly cockpitDirty = { side: false, radar: false };
   private levelText = '';
   private online = false;
+  private readonly tr: HTMLElement;
+  private readonly boardEl: HTMLElement;
+  private boardHtml = '';
+  private readonly micBtn: HTMLButtonElement;
+  /** Online radio: the HUD's microphone button was pressed or let go (mouse, pen), with the time of the event. */
+  onMic: (down: boolean, at: number) => void = () => undefined;
 
   constructor(
     private readonly root: HTMLElement,
@@ -101,6 +115,8 @@ export class Hud {
       <div class="h-viewname" hidden></div>
       <div class="h-alert" hidden></div>
       <div class="h-radio" aria-live="polite" hidden></div>
+      <div class="h-board" aria-label="Pilots online" hidden></div>
+      <button class="h-mic" type="button" aria-label="Radio: hold to talk (R), click three times to keep the microphone open" title="Radio: hold to talk (R) · click 3× to keep it open" hidden>${MIC_ICON}<span class="h-mic-k"><kbd>R</kbd><span data-k="mic">Hold to talk</span></span></button>
       <div class="h-power" hidden><span data-k="power"></span><span class="h-bar"><i></i></span></div>
       <div class="h-hint" hidden>Turn your phone sideways for the best view</div>`;
     const q = <T extends HTMLElement>(sel: string) => root.querySelector(sel) as T;
@@ -149,6 +165,36 @@ export class Hud {
     // The eye button must not start the stick or a pinch below it.
     viewBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.viewName = q('.h-viewname');
+    this.tr = q('.h-tr');
+    this.boardEl = q('.h-board');
+    this.micBtn = q<HTMLButtonElement>('.h-mic');
+    // Hold to talk; it keeps the pointer, so letting go anywhere ends the press.
+    let micPointer = -1;
+    const micUp = (e: PointerEvent) => {
+      if (e.pointerId !== micPointer) return;
+      micPointer = -1;
+      this.onMic(false, eventTime(e));
+    };
+    this.micBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (micPointer !== -1 || e.button > 0) return;
+      micPointer = e.pointerId;
+      try {
+        this.micBtn.setPointerCapture(e.pointerId);
+      } catch {
+        // Tracking still works without capture.
+      }
+      this.onMic(true, eventTime(e));
+    });
+    this.micBtn.addEventListener('pointerup', micUp);
+    this.micBtn.addEventListener('pointercancel', micUp);
+    this.micBtn.addEventListener('lostpointercapture', micUp);
+    this.micBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.micBtn.blur();
+    });
+    this.micBtn.addEventListener('contextmenu', (e) => e.preventDefault());
     this.cockpitLeft.width = 512;
     this.cockpitLeft.height = 256;
     this.cockpitRight.width = 512;
@@ -213,7 +259,56 @@ export class Hud {
     this.scoreLabel.textContent = on ? 'Round' : 'Score';
     this.online = on;
     this.root.classList.toggle('online', on);
-    if (!on) this.radio([], false);
+    this.micBtn.hidden = !on;
+    if (!on) {
+      this.radio([], false);
+      this.board([]);
+      this.setMic(false, false);
+    }
+  }
+
+  /** Lights the microphone button: live while talking, marked while it is kept open. */
+  setMic(live: boolean, open: boolean): void {
+    this.micBtn.classList.toggle('on', live);
+    this.micBtn.classList.toggle('open', open);
+    this.micBtn.setAttribute('aria-pressed', String(live));
+    const label = open ? 'Mic open · click to close' : live ? 'Live' : 'Hold to talk';
+    const k = this.micBtn.querySelector('[data-k="mic"]');
+    if (k && k.textContent !== label) k.textContent = label;
+  }
+
+  /** The pilots online with their points in this round and the rounds they won. */
+  board(rows: BoardRow[]): void {
+    let html = '';
+    if (rows.length) {
+      const humans = rows.filter((r) => !r.bot && !r.gone).length;
+      const line = (r: BoardRow) => {
+        const cls = [r.you && 'you', r.bot && 'bot', (r.down || r.gone) && 'down', r.glider < 0 && 'wait', r.talking && 'talk'].filter(Boolean).join(' ');
+        const color = r.glider >= 0 ? hex(this.colors[r.glider % this.colors.length] ?? 0xffffff) : 'transparent';
+        const tag = r.bot ? '<em>Bot</em>' : r.gone ? '<em>Left</em>' : r.glider < 0 ? '<em>Next round</em>' : r.down ? '<em>Down</em>' : '';
+        const pts = r.points === null ? '–' : formatScore(r.points);
+        const wins = r.wins < 0 ? '' : String(r.wins);
+        return `<li class="${cls}"><i style="--c:${color}"></i><span class="b-name">${esc(r.name)}${r.you ? ' <small>(you)</small>' : ''}${r.talking ? MIC_SMALL : ''}${tag}</span><b>${pts}</b><span class="b-w">${wins}</span></li>`;
+      };
+      html = `<div class="b-head"><span>Online · ${humans}<span class="b-long"> ${humans === 1 ? 'pilot' : 'pilots'}</span></span><span>Points</span><span class="b-w" title="Rounds won">★</span></div><ol>${rows.slice(0, 10).map(line).join('')}</ol>`;
+    }
+    if (html !== this.boardHtml) {
+      this.boardHtml = html;
+      this.boardEl.innerHTML = html;
+      this.boardEl.hidden = !html;
+    }
+    this.placeBoard();
+  }
+
+  /** On a computer the board hangs under the score panel at the top right. */
+  private placeBoard(): void {
+    if (this.boardEl.hidden || this.root.classList.contains('touch')) {
+      if (this.boardEl.style.top) this.boardEl.style.top = '';
+      return;
+    }
+    const box = this.tr.getBoundingClientRect();
+    const top = box.height > 0 ? `${Math.round(box.bottom + 8)}px` : '';
+    if (this.boardEl.style.top !== top) this.boardEl.style.top = top;
   }
 
   /** Who is talking on the radio right now, and whether your own mic is open. */
