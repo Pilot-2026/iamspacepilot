@@ -1,6 +1,6 @@
 import { validateCallsign } from '../core/callsign';
 import { LEVELS, LEVEL_ORDER } from '../core/levels';
-import { isShip, type ShipId } from '../core/ships';
+import { SHIP_ORDER, type ShipId } from '../core/ships';
 import type { Difficulty, LevelId } from '../core/types';
 
 export { validateCallsign };
@@ -141,7 +141,9 @@ export function loadProfile(): Profile {
   }
   if (!LEVELS[p.solo.level] || LEVELS[p.solo.level].index > p.unlocked) p.solo.level = 'cloud-sea';
   if (!LEVELS[p.online.level]) p.online.level = 'cloud-sea';
-  if (!isShip(p.ship)) p.ship = 'trident';
+  // Every start begins with the first ship; the hangar choice and the dachshund cheat (33333) last until the page is closed or reloaded.
+  p.ship = SHIP_ORDER[0];
+  p.dog = false;
   p.online.bots = Math.max(0, Math.min(7, Number(p.online.bots) | 0));
   saveProfile(p);
   return p;
