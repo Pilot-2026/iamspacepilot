@@ -1,22 +1,50 @@
 import { Music, type Mood } from './music';
 
-/** Steering sounds: a hiss panned to the side you turn to, a rising tone to climb, a deep rush to dive, a whirr to roll. */
+/** A pulsing whistle for one turning direction. */
+interface TurnVoice {
+  osc: OscillatorNode;
+  lfo: OscillatorNode;
+  gain: GainNode;
+}
+
+/**
+ * Steering sounds: a hiss panned to the side you turn to plus a whistle of
+ * its own for each side (right high and fast pulsing, left low and slow),
+ * a rising tone to climb, the same tone much deeper to dive, a whirr to roll.
+ */
 interface Maneuver {
   yawSrc: AudioBufferSourceNode;
   yawFilter: BiquadFilterNode;
   yawPan: StereoPannerNode;
   yawGain: GainNode;
+  right: TurnVoice;
+  left: TurnVoice;
   climb: OscillatorNode;
   climbGain: GainNode;
   diveSrc: AudioBufferSourceNode;
   diveFilter: BiquadFilterNode;
-  diveSub: OscillatorNode;
   diveGain: GainNode;
+  /** The climbing tone's deep twin, with an overtone so phone speakers play it too. */
+  diveTone: OscillatorNode;
+  diveOver: OscillatorNode;
+  diveToneGain: GainNode;
   roll: OscillatorNode;
   rollPan: StereoPannerNode;
   rollGain: GainNode;
   lfo: OscillatorNode;
 }
+
+/** Loudness of the steering sounds (gain at full deflection). */
+export const STEER_GAIN = {
+  /** Turning hiss and each side's whistle. */
+  yaw: 0.05,
+  turn: 0.026,
+  /** Climbing tone (was 0.012). */
+  climb: 0.024,
+  /** Diving: the deep tone and its air rush. */
+  dive: 0.04,
+  diveRush: 0.05,
+} as const;
 
 type SessionType = 'auto' | 'playback' | 'play-and-record' | 'ambient' | 'transient' | 'transient-solo';
 
@@ -290,6 +318,26 @@ export class Sound {
     const yawPan = ctx.createStereoPanner();
     const yawGain = gain();
     yawSrc.connect(yawFilter).connect(yawPan).connect(yawGain).connect(out);
+    // Each side has its own whistle: different pitch, different pulse, from its side.
+    const turnVoice = (freq: number, pulse: number, pan: number): TurnVoice => {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = pulse;
+      const depth = ctx.createGain();
+      depth.gain.value = 0.45;
+      const trem = ctx.createGain();
+      trem.gain.value = 0.55;
+      lfo.connect(depth).connect(trem.gain);
+      const p = ctx.createStereoPanner();
+      p.pan.value = pan;
+      const g = gain();
+      osc.connect(trem).connect(p).connect(g).connect(out);
+      return { osc, lfo, gain: g };
+    };
+    const right = turnVoice(740, 9, 0.85);
+    const left = turnVoice(392, 5, -0.85);
     const climb = ctx.createOscillator();
     climb.type = 'sine';
     climb.frequency.value = 260;
@@ -299,13 +347,22 @@ export class Sound {
     const diveFilter = ctx.createBiquadFilter();
     diveFilter.type = 'lowpass';
     diveFilter.frequency.value = 400;
-    // No low hum when diving: just air, a little deeper than the turns.
-    const diveSub = ctx.createOscillator();
-    diveSub.type = 'sine';
-    diveSub.frequency.value = 220;
     const diveGain = gain();
     diveSrc.connect(diveFilter).connect(diveGain);
     diveGain.connect(out);
+    // Diving sounds like climbing, only much deeper: a sine about one and a half octaves lower that falls.
+    const diveTone = ctx.createOscillator();
+    diveTone.type = 'sine';
+    diveTone.frequency.value = 180;
+    const diveOver = ctx.createOscillator();
+    diveOver.type = 'sine';
+    diveOver.frequency.value = 360;
+    const overGain = ctx.createGain();
+    overGain.gain.value = 0.45;
+    const diveToneGain = gain();
+    diveTone.connect(diveToneGain);
+    diveOver.connect(overGain).connect(diveToneGain);
+    diveToneGain.connect(out);
     const roll = ctx.createOscillator();
     roll.type = 'square';
     roll.frequency.value = 150;
@@ -324,13 +381,14 @@ export class Sound {
     lfo.connect(lfoGain).connect(trem.gain);
     roll.connect(rollFilter).connect(trem).connect(rollPan).connect(rollGain).connect(out);
     for (const n of [yawSrc, diveSrc]) n.start(0, Math.random());
-    for (const n of [climb, diveSub, roll, lfo]) n.start();
-    return { yawSrc, yawFilter, yawPan, yawGain, climb, climbGain, diveSrc, diveFilter, diveSub, diveGain, roll, rollPan, rollGain, lfo };
+    for (const n of [climb, diveTone, diveOver, roll, lfo, right.osc, right.lfo, left.osc, left.lfo]) n.start();
+    return { yawSrc, yawFilter, yawPan, yawGain, right, left, climb, climbGain, diveSrc, diveFilter, diveGain, diveTone, diveOver, diveToneGain, roll, rollPan, rollGain, lfo };
   }
 
   /**
    * Steering sounds, every frame while flying. x: turn (right +), y: nose (up +), r: roll (right +).
-   * Left and right sound different and come from that side; climbing rises, diving rushes low.
+   * Left and right each have their own whistle and come from that side; climbing
+   * rises, diving is the same tone much deeper and falls.
    */
   maneuver(x: number, y: number, r: number): void {
     const m = this.man;
@@ -338,31 +396,67 @@ export class Sound {
     if (!m || !ctx) return;
     const t = ctx.currentTime;
     const ax = Math.abs(x);
-    m.yawGain.gain.setTargetAtTime(0.035 * ax, t, 0.08);
-    m.yawFilter.frequency.setTargetAtTime(x > 0 ? 1500 + 500 * ax : 820 - 200 * ax, t, 0.08);
-    m.yawPan.pan.setTargetAtTime(x > 0 ? 0.7 : x < 0 ? -0.7 : 0, t, 0.08);
+    const G = STEER_GAIN;
+    m.yawGain.gain.setTargetAtTime(G.yaw * ax, t, 0.08);
+    m.yawFilter.frequency.setTargetAtTime(x > 0 ? 1600 + 600 * ax : 760 - 220 * ax, t, 0.08);
+    m.yawPan.pan.setTargetAtTime(x > 0 ? 0.9 : x < 0 ? -0.9 : 0, t, 0.08);
+    // Right: a high whistle that climbs and pulses fast. Left: a low one that sinks and pulses slowly.
+    const rx = x > 0 ? x : 0;
+    const lx = x < 0 ? -x : 0;
+    m.right.gain.gain.setTargetAtTime(G.turn * rx, t, 0.06);
+    m.right.osc.frequency.setTargetAtTime(740 + 220 * rx, t, 0.1);
+    m.left.gain.gain.setTargetAtTime(G.turn * 1.15 * lx, t, 0.06);
+    m.left.osc.frequency.setTargetAtTime(392 - 90 * lx, t, 0.1);
     const up = y > 0 ? y : 0;
     const down = y < 0 ? -y : 0;
-    m.climbGain.gain.setTargetAtTime(0.012 * up, t, 0.08);
+    m.climbGain.gain.setTargetAtTime(G.climb * up, t, 0.08);
     m.climb.frequency.setTargetAtTime(520 + 260 * up, t, 0.1);
-    m.diveGain.gain.setTargetAtTime(0.04 * down, t, 0.08);
-    m.diveFilter.frequency.setTargetAtTime(600 + 900 * down, t, 0.1);
+    m.diveGain.gain.setTargetAtTime(G.diveRush * down, t, 0.08);
+    m.diveFilter.frequency.setTargetAtTime(500 + 700 * down, t, 0.1);
+    m.diveToneGain.gain.setTargetAtTime(G.dive * down, t, 0.08);
+    const deep = 180 - 60 * down;
+    m.diveTone.frequency.setTargetAtTime(deep, t, 0.1);
+    m.diveOver.frequency.setTargetAtTime(deep * 2, t, 0.1);
     const ar = Math.abs(r);
     m.rollGain.gain.setTargetAtTime(0.012 * ar, t, 0.05);
     m.roll.frequency.setTargetAtTime(130 + 80 * ar, t, 0.08);
     m.rollPan.pan.setTargetAtTime(r * 0.6, t, 0.08);
     // A short thruster puff when a move starts.
     const on = (v: number, last: number) => Math.abs(v) > 0.45 && Math.abs(last) <= 0.45;
-    if (on(x, this.lastX)) this.puff(x > 0 ? 1250 : 650, x > 0 ? 0.75 : -0.75, x > 0 ? 1.4 : 0.8);
-    if (on(y, this.lastY)) this.puff(y > 0 ? 1800 : 380, 0, y > 0 ? 1.6 : 0.6);
+    if (on(x, this.lastX)) {
+      this.puff(x > 0 ? 1250 : 650, x > 0 ? 0.9 : -0.9, x > 0 ? 1.4 : 0.8, 0.12);
+      // And a short chirp: up for right, down for left.
+      this.chirp(x > 0 ? 880 : 520, x > 0 ? 1320 : 330, x > 0 ? 0.9 : -0.9);
+    }
+    if (on(y, this.lastY)) this.puff(y > 0 ? 1800 : 300, 0, y > 0 ? 1.6 : 0.55, 0.11);
     if (on(r, this.lastR)) this.puff(2600, r > 0 ? 0.5 : -0.5, r > 0 ? 1.3 : 0.75);
     this.lastX = x;
     this.lastY = y;
     this.lastR = r;
   }
 
+  /** A short sliding tone, panned. */
+  private chirp(from: number, to: number, pan: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(from, t);
+    o.frequency.exponentialRampToValueAtTime(to, t + 0.12);
+    const p = ctx.createStereoPanner();
+    p.pan.value = pan;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.07, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(p).connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.18);
+  }
+
   /** Short filtered noise burst, panned, with the filter sliding by `slide`. */
-  private puff(freq: number, pan: number, slide: number): void {
+  private puff(freq: number, pan: number, slide: number, level = 0.09): void {
     const ctx = this.ctx;
     if (!ctx || !this.master || !this.noise) return;
     const t = ctx.currentTime;
@@ -377,7 +471,7 @@ export class Sound {
     p.pan.value = pan;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.09, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(level, t + 0.015);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
     src.connect(f).connect(p).connect(g).connect(this.master);
     src.start(t, Math.random());
@@ -394,8 +488,8 @@ export class Sound {
     this.engine = null;
     const m = this.man;
     if (m) {
-      for (const g of [m.yawGain, m.climbGain, m.diveGain, m.rollGain]) g.gain.setTargetAtTime(0, t, 0.05);
-      for (const n of [m.yawSrc, m.diveSrc, m.climb, m.diveSub, m.roll, m.lfo]) n.stop(t + 0.4);
+      for (const g of [m.yawGain, m.right.gain, m.left.gain, m.climbGain, m.diveGain, m.diveToneGain, m.rollGain]) g.gain.setTargetAtTime(0, t, 0.05);
+      for (const n of [m.yawSrc, m.diveSrc, m.climb, m.diveTone, m.diveOver, m.roll, m.lfo, m.right.osc, m.right.lfo, m.left.osc, m.left.lfo]) n.stop(t + 0.4);
       this.man = null;
     }
     this.lastX = this.lastY = this.lastR = 0;
