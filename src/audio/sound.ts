@@ -662,13 +662,55 @@ export class Sound {
     [880, 1175, 1568].forEach((f, i) => this.tone(f, 0.16, 'sine', 0.12, t + i * 0.07));
   }
 
+  /**
+   * A glider explodes and crumbles: a deep, warm boom, a soft rumble that
+   * rolls away and a scatter of small glassy pieces, panned all around.
+   * Rounder than a bang: no bright hiss.
+   */
   crash(loud: boolean): void {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
-    const g = loud ? 0.7 : 0.18;
-    this.noiseBurst(loud ? 0.9 : 0.5, 'lowpass', 3200, 160, g, t);
-    this.tone(70, loud ? 0.6 : 0.3, 'sine', g * 0.8, t, 32);
+    const g = loud ? 1 : 0.3;
+    this.tone(88, 1.0, 'sine', 0.34 * g, t, 32);
+    this.tone(176, 0.5, 'sine', 0.09 * g, t, 66);
+    this.noiseBurst(1.5, 'lowpass', 650, 55, 0.24 * g, t);
+    this.noiseBurst(0.5, 'bandpass', 1100, 180, 0.07 * g, t + 0.02);
+    // The pieces: many short, soft tinkles, most of them early, flying off to every side.
+    const pieces = loud ? 26 : 12;
+    for (let i = 0; i < pieces; i++) {
+      const at = t + 0.06 + -Math.log(1 - Math.random() * 0.97) * 0.32;
+      const f = 1500 + Math.random() * 2600;
+      this.tinkle(f, 0.05 + Math.random() * 0.1, (0.022 + Math.random() * 0.032) * g, Math.random() * 2 - 1, at);
+    }
+  }
+
+  /** A small glassy piece: a short sine with a quieter fifth above, panned. */
+  private tinkle(freq: number, dur: number, gain: number, pan: number, when: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const p = ctx.createStereoPanner();
+    p.pan.value = pan;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(gain, when + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    p.connect(this.master);
+    g.connect(p);
+    for (const [f, lvl] of [
+      [freq, 1],
+      [freq * 1.5, 0.35],
+    ]) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f, when);
+      o.frequency.exponentialRampToValueAtTime(f * 0.92, when + dur);
+      const og = ctx.createGain();
+      og.gain.value = lvl;
+      o.connect(og).connect(g);
+      o.start(when);
+      o.stop(when + dur + 0.02);
+    }
   }
 
   thunder(): void {
@@ -774,13 +816,19 @@ export class Sound {
     }
   }
 
-  /** A shot hits a glider: loud when it is yours. */
+  /**
+   * A shot hits a glider (louder when it is yours): a soft, round thud and a
+   * clear ringing "dong", like a hit on a hull, not a harsh crack.
+   */
   hit(onMe: boolean): void {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
-    this.noiseBurst(0.2, 'bandpass', 2200, 500, onMe ? 0.42 : 0.16, t);
-    this.tone(190, 0.22, 'square', onMe ? 0.12 : 0.05, t, 80);
+    const g = onMe ? 1 : 0.4;
+    this.noiseBurst(0.28, 'lowpass', 1000, 160, 0.17 * g, t);
+    this.tone(210, 0.3, 'sine', 0.16 * g, t, 105);
+    this.tone(660, 0.55, 'sine', 0.04 * g, t + 0.005);
+    this.tone(990, 0.45, 'sine', 0.025 * g, t + 0.005);
   }
 
   /** Your shot hit someone. */
