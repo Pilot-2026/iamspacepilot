@@ -160,11 +160,14 @@ export const SHIPS: Readonly<Record<ShipId, ShipSpec>> = {
 
 export const SHIP_ORDER: readonly ShipId[] = ['trident', 'manta', 'halo', 'bulwark', 'dachshund'];
 
+/** The four real ships: they fly in the intro and behind the menus, and bots fly them. The dachshund is only picked in the hangar. */
+export const FLEET: readonly ShipId[] = ['trident', 'manta', 'halo', 'bulwark'];
+
 export const isShip = (v: unknown): v is ShipId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(SHIPS, v);
 
 /** Ship of bot i in a round: the same on every device for the same seed. */
 export function botShip(seed: number, i: number): ShipId {
-  return SHIP_ORDER[((seed >>> 3) + i * 3) % SHIP_ORDER.length];
+  return FLEET[((seed >>> 3) + i * 3) % FLEET.length];
 }
 
 /** Radius of the Bulwark's shockwave. */

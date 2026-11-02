@@ -892,7 +892,7 @@ export class Menu {
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span class="m-ver">v0.13 · Good boy</span><span>Fly free. Leave light behind.</span>`,
+      `<span class="m-ver">v0.13.1 · Good boy</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
@@ -952,8 +952,8 @@ export class Menu {
         <table class="keys">
           <thead><tr><th>Action</th><th>Keyboard</th><th>Gamepad</th><th>Touch</th></tr></thead>
           <tbody>
-            <tr><td>Turn</td><td><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd></td><td>Left stick</td><td>Left thumb stick</td></tr>
-            <tr><td>Nose down, up (flight mode)</td><td><kbd>↑</kbd> <kbd>↓</kbd> or <kbd>W</kbd> <kbd>S</kbd></td><td>Left stick</td><td>Left thumb stick</td></tr>
+            <tr><td>Turn</td><td><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd></td><td>Left stick</td><td>Right thumb stick</td></tr>
+            <tr><td>Nose down, up (flight mode)</td><td><kbd>↑</kbd> <kbd>↓</kbd> or <kbd>W</kbd> <kbd>S</kbd></td><td>Left stick</td><td>Right thumb stick</td></tr>
             <tr><td>Roll</td><td><kbd>Q</kbd> <kbd>E</kbd></td><td>LB, RB</td><td>Roll buttons</td></tr>
             <tr><td>Fire</td><td><kbd>Space</kbd> or left click</td><td>LT or X</td><td>Fire button</td></tr>
             <tr><td>Boost</td><td><kbd>⌘ Command</kbd> or <kbd>Shift</kbd></td><td>RT or A</td><td>Boost button</td></tr>
