@@ -47,6 +47,8 @@ export interface MenuHandlers {
   quit(): void;
   settingsChanged(): void;
   click(): void;
+  /** The title on the start screen was clicked: play the intro again. */
+  replayIntro(): void;
   loadBoard(level: LevelId): Promise<BoardResult>;
   loadStats(): Promise<StatsResult>;
   online: OnlineHandlers;
@@ -518,11 +520,8 @@ export class Menu {
         p.ship = val;
         this.save();
         this.h.online.session()?.match.setShip(val);
-        const top = this.root.scrollTop;
-        this.root.innerHTML = this.render('hangar');
-        this.root.scrollTop = top;
-        (this.root.querySelector(`[data-act="pick-ship"][data-val="${val}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
-        this.h.ships(Array.from(this.root.querySelectorAll<HTMLCanvasElement>('canvas[data-ship]')));
+        // Picked: straight back to where the hangar was opened from.
+        this.show(this.hangarReturn);
         break;
       }
       case 'o-level':
@@ -665,6 +664,9 @@ export class Menu {
       case 'stats-lock':
         setStatsKey('');
         this.loadStats();
+        break;
+      case 'replay-intro':
+        this.h.replayIntro();
         break;
       case 'board-level':
         this.boardLevel = val as LevelId;
@@ -879,7 +881,7 @@ export class Menu {
     const name = esc(this.profile.callsign || 'pilot');
     return frame(
       `<header class="m-hero">
-        ${wordmark()}
+        <button class="m-title-btn" data-act="replay-intro" aria-label="iamSpacePilot – play the intro again">${wordmark('span')}</button>
         <p class="m-tagline">Up here, every pilot leaves a line of light behind. Some last a heartbeat, some last forever. Fly brave, fly free – the sky remembers you.</p>
         <p class="m-credit">A game by Andreas Schmoelzer<br>entirely made with AI</p>
       </header>
@@ -892,7 +894,7 @@ export class Menu {
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span class="m-ver">v0.13.1 · Good boy</span><span>Fly free. Leave light behind.</span>`,
+      `<span class="m-ver">v0.14 · Zoo</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 

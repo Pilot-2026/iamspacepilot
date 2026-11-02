@@ -76,6 +76,8 @@ class App {
   private solo: SoloSetup | null = null;
   private recorder = new ReplayRecorder();
   private final: { score: SoloScore; ticks: number } | null = null;
+  /** The ship was switched with a cheat this round: no online score. */
+  private cheated = false;
   /** Index of this device's glider in the current world. */
   private local = PLAYER;
   /** Online game in progress, or null in solo. */
@@ -128,6 +130,10 @@ class App {
       },
       loadBoard: (level) => fetchBoard(level),
       loadStats: () => fetchStats(),
+      replayIntro: () => {
+        if (this.state !== 'menu' || this.session) return;
+        this.menu.showIntro(() => this.menu.show('main'));
+      },
       screen: (screen) => this.menuScreen(screen),
       ships: (canvases) => {
         if (!canvases.length && !this.previews) return;
@@ -241,6 +247,7 @@ class App {
     };
     this.world = new World(soloWorldSetup(this.solo, p.callsign || 'You'));
     this.recorder = new ReplayRecorder();
+    this.cheated = false;
     this.final = null;
     this.local = PLAYER;
     this.view.load(this.world, PLAYER);
@@ -775,17 +782,26 @@ class App {
     else this.hud.message(this.profile.dog ? 'Dachshund' : 'Glider', this.profile.dog ? 'Spits bones · 33333 to switch back' : '', 1.6);
   }
 
-  /** Cheat (keyboard only): 2222 restarts the round with the next ship. */
+  /**
+   * Cheat (keyboard only): 22222 switches to the next ship right away, in the
+   * running round; press it again for the next one, through all ships. A round
+   * with a switched ship is not posted to the online leaderboard.
+   */
   private shipCheat(): void {
-    if (this.session) return;
+    const w = this.world;
+    if (this.session || !w || !this.view) return;
     if (this.state !== 'playing' && this.state !== 'paused' && this.state !== 'ending') return;
-    const next = SHIP_ORDER[(SHIP_ORDER.indexOf(this.profile.ship) + 1) % SHIP_ORDER.length];
+    const g = w.gliders[this.local];
+    if (!g?.alive) return;
+    const next = SHIP_ORDER[(SHIP_ORDER.indexOf(g.ship.id) + 1) % SHIP_ORDER.length];
+    w.swapShip(this.local, SHIPS[next]);
+    this.view.swapModel(this.local);
+    this.hud.setShip(w, this.local);
     this.profile.ship = next;
     saveProfile(this.profile);
-    this.endAt = 0;
-    this.sound.stopEngine();
-    this.launch();
-    this.hud.message(SHIPS[next].name, SHIPS[next].special.name, 1.6);
+    this.cheated = true;
+    this.hud.message(SHIPS[next].name, `${SHIPS[next].special.name} · 22222 for the next`, 1.4);
+    this.sound.special('phase', 0.5);
   }
 
   private finish(): void {
@@ -836,7 +852,7 @@ class App {
     this.sound.stopEngine();
     this.hud.hide();
     this.touch.hide();
-    const canPost = !!this.final && !!this.profile.callsign;
+    const canPost = !!this.final && !!this.profile.callsign && !this.cheated;
     this.menu.setOnlineStatus(canPost ? 'Posting your score to the online leaderboard…' : '');
     this.menu.show('result', result);
     this.releaseWakeLock();

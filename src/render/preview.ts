@@ -60,8 +60,10 @@ export class ShipPreviews {
     let s = this.ships.get(id);
     if (!s) {
       s = makeShip(id, 0xffe45c, sharedTextures().glow);
-      // The dachshund is slimmer than the ships: show it a little bigger.
-      if (id === 'dachshund') s.group.scale.setScalar(1.45);
+      // Every model the same size in its card, whatever its shape.
+      const size = new THREE.Box3().setFromObject(s.group).getSize(new THREE.Vector3());
+      const big = Math.max(size.x, size.y * 1.4, size.z);
+      if (big > 0) s.group.scale.setScalar(Math.min(1.6, 5.6 / big));
       for (const f of s.flames) f.scale.multiplyScalar(0.9);
       this.ships.set(id, s);
     }
@@ -79,9 +81,12 @@ export class ShipPreviews {
     for (const c of this.canvases) {
       const id = c.dataset.ship;
       if (!isShip(id)) continue;
+      // Only the cards on screen are drawn (the hangar has many ships).
+      const box = c.getBoundingClientRect();
+      if (box.bottom < 0 || box.top > window.innerHeight) continue;
       const s = this.ship(id);
       this.scene.add(s.group);
-      s.group.rotation.set(0.12 * Math.sin(this.t * 0.9), this.t * 0.6 + SHIP_PHASE[id], 0.08 * Math.sin(this.t * 1.3));
+      s.group.rotation.set(0.12 * Math.sin(this.t * 0.9), this.t * 0.6 + (SHIP_PHASE[id] ?? id.length), 0.08 * Math.sin(this.t * 1.3));
       // The dachshund gallops, wags and looks around in the hangar too.
       (s as Partial<DogMesh>).animate?.(this.t, 1 / 30, 24, false);
       r.render(this.scene, this.camera);
@@ -102,4 +107,4 @@ export class ShipPreviews {
   }
 }
 
-const SHIP_PHASE: Record<ShipId, number> = { trident: 0, manta: 1.6, halo: 3.1, bulwark: 4.7, dachshund: 2.3 };
+const SHIP_PHASE: Partial<Record<ShipId, number>> = { trident: 0, manta: 1.6, halo: 3.1, bulwark: 4.7, dachshund: 2.3 };

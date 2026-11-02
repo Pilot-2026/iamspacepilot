@@ -141,7 +141,9 @@ interface Bolt {
 }
 
 /** Strong colours that stand out on the yellow sky. */
-const INTRO_COLORS: Record<ShipId, number> = { trident: 0xd10000, manta: 0x000088, halo: 0xd4007a, bulwark: 0x00806a, dachshund: 0x8a4415 };
+const INTRO_COLOR_LIST: Partial<Record<ShipId, number>> = { trident: 0xd10000, manta: 0x000088, halo: 0xd4007a, bulwark: 0x00806a, dachshund: 0x8a4415 };
+/** Trail colour of a ship in the intro (strong colours on the yellow sky). */
+const introColor = (id: ShipId): number => INTRO_COLOR_LIST[id] ?? 0x8a4415;
 /** The intro choreography is over by then; afterwards ships keep coming while the title waits. */
 const INTRO_END = 7.6;
 const MENU_TRAILS = [0x0a0a0a, 0xff2d55, 0x7b2dff, 0x0050ff, 0x00a86b, 0xff6a00];
@@ -221,7 +223,7 @@ export class MenuStage {
   }
 
   private makeFlyer(id: ShipId, curve: THREE.Curve<THREE.Vector3>, t0: number, dur: number, trailColor: number, intro: boolean, scale = 1): Flyer {
-    const glow = intro ? INTRO_COLORS[id] : 0xffe45c;
+    const glow = intro ? introColor(id) : 0xffe45c;
     const ship = makeShip(id, glow, sharedTextures().glow);
     // A dark outline keeps the gold ships readable on the yellow background.
     const gold = ship.group.children[0] as THREE.Mesh;
@@ -281,7 +283,7 @@ export class MenuStage {
     // The round logo flies at the viewer, big, flipping like a coin, and through the screen.
     this.launchRoundel(3.1);
     for (const [id, curve, t0, dur, roll, rollFrom, rollTo, fire] of plan) {
-      const f = this.makeFlyer(id, curve, t0, dur, INTRO_COLORS[id], true);
+      const f = this.makeFlyer(id, curve, t0, dur, introColor(id), true);
       f.roll = roll;
       f.rollFrom = rollFrom;
       f.rollTo = rollTo;
@@ -312,7 +314,7 @@ export class MenuStage {
     const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
     const id = FLEET[Math.floor(Math.random() * FLEET.length)];
     const dur = curve.getLength() / (44 + Math.random() * 24);
-    const trail = intro ? INTRO_COLORS[id] : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
+    const trail = intro ? introColor(id) : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
     const f = this.makeFlyer(id, curve, this.time, dur, trail, intro, scale);
     if (Math.random() < 0.4) {
       f.roll = (Math.random() < 0.5 ? -1 : 1) * 5;
@@ -341,7 +343,7 @@ export class MenuStage {
     );
     const id = FLEET[Math.floor(Math.random() * FLEET.length)];
     const dur = 2.3 + Math.random() * 0.6;
-    const trail = intro ? INTRO_COLORS[id] : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
+    const trail = intro ? introColor(id) : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
     const f = this.makeFlyer(id, curve, this.time, dur, trail, intro, 1);
     f.roll = (Math.random() < 0.5 ? -1 : 1) * (2.5 + Math.random() * 2.5);
     f.rollFrom = this.time + dur * 0.15;
@@ -378,7 +380,7 @@ export class MenuStage {
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
     const id = FLEET[Math.floor(Math.random() * FLEET.length)];
     const dur = curve.getLength() / (55 + Math.random() * 25);
-    const trail = intro ? INTRO_COLORS[id] : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
+    const trail = intro ? introColor(id) : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
     const f = this.makeFlyer(id, curve, this.time, dur, trail, intro, scale);
     f.roll = (Math.random() < 0.5 ? -1 : 1) * (kind === 2 ? 9 : 5);
     f.rollFrom = this.time + dur * (kind === 2 ? 0.2 : 0.55);

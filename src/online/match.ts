@@ -345,7 +345,9 @@ export class OnlineMatch {
     if (this.ticks % 3 === 0) this.sendState();
     if (this.isHost && !this.endSent && w.phase !== 'countdown') {
       const humanFlying = this.pilots.some((p, i) => !p.bot && w.gliders[i].alive);
-      if (w.phase === 'over' || w.roundDecided() || !humanFlying) this.finishRound();
+      // Alone in the game (no bots, nobody else): fly as long as you like; the round ends when you crash.
+      const decided = w.gliders.length > 1 && w.roundDecided();
+      if (w.phase === 'over' || decided || !humanFlying) this.finishRound();
     }
   }
 

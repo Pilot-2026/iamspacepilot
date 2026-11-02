@@ -522,6 +522,20 @@ export class GameView {
     return this.dogMode;
   }
 
+  /** Glider i changed its ship (cheat 22222): build its new model in place. */
+  swapModel(i: number): void {
+    const pv = this.pilots[i];
+    const w = this.world;
+    if (!pv || !w) return;
+    const id = w.gliders[i].ship.id;
+    const next = i === this.player && this.dogMode ? makeDog(pv.color) : makeShip(id, pv.color, sharedTextures().glow);
+    pv.group.remove(pv.ship.group);
+    disposeShip(pv.ship);
+    pv.group.add(next.group);
+    pv.ship = next;
+    this.spawnBurst(pv.p.x, pv.p.y, pv.p.z, pv.color, 0.3);
+  }
+
   /** Glider i flies as a dachshund (the official ship, or your cheat skin). */
   isDog(i: number): boolean {
     if (i === this.player && this.dogMode) return true;

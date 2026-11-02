@@ -2,14 +2,15 @@ import { SHIPS, SHIP_ORDER, type ShipId } from '../core/ships';
 import { POWERS, POWER_ORDER } from '../core/powerups';
 import { ARROW, esc, frame } from './html';
 
-/** The hangar: pick one of the four ships. Each card has a live 3D view (canvas). */
+/** The hangar: pick one of the ships or creatures. Each card has a live 3D view (canvas). */
 export function hangarScreen(current: ShipId): string {
   const bar = (label: string, v: number) =>
     `<div class="sh-stat"><span>${label}</span><span class="sh-bar" style="--v:${v.toFixed(2)}"><i></i></span></div>`;
   const cards = SHIP_ORDER.map((id) => {
     const s = SHIPS[id];
     const on = id === current;
-    return `<article class="ship-card${on ? ' on' : ''}">
+    const group = id === 'dachshund' ? '<h3 class="m-sub ship-group">Creatures</h3>' : '';
+    return `${group}<article class="ship-card${on ? ' on' : ''}">
       <canvas class="sh-view" data-ship="${id}" width="480" height="300" aria-hidden="true"></canvas>
       <div class="sh-body">
         <p class="sh-model">${esc(s.model)} · ${esc(s.role)}</p>

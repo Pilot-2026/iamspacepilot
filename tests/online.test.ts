@@ -159,6 +159,21 @@ describe('online match', () => {
     expect(b.maxMessage).toBeLessThan(4000);
   });
 
+  it('lets a pilot alone in a game fly on until they crash', () => {
+    const net = new FakeNet();
+    const a = net.join('Alpha', { bots: 0, difficulty: 'pilot' });
+    net.deliver();
+    a.match.startRound();
+    net.deliver();
+    // Ten seconds of calm flying: no winner, the round goes on.
+    fly(net, 180 + 600);
+    expect(a.results).toHaveLength(0);
+    expect(a.match.world!.gliders[0].alive).toBe(true);
+    // Diving into the floor ends it.
+    for (let k = 0; k < 40 && a.results.length === 0; k++) fly(net, 300, () => ({ steerX: 0, steerY: -1, roll: 0, boost: true }));
+    expect(a.results).toHaveLength(1);
+  });
+
   it('reports crashes to everyone, ends the round on the host and starts the next one', () => {
     const net = new FakeNet();
     // Normal speed: at Rookie pace the dive below would only loop.

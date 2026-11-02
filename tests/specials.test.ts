@@ -38,8 +38,8 @@ function duel(a: ShipId, b: ShipId = 'trident', opts: { wall?: boolean; bAt?: nu
 const shotsOf = (w: World, id: number) => w.events.filter((e) => e.type === 'shot' && e.id === id).length;
 
 describe('ships', () => {
-  it('has five models (four ships and the dachshund); the Bulwark takes five hits', () => {
-    expect(Object.keys(SHIPS)).toEqual(['trident', 'manta', 'halo', 'bulwark', 'dachshund']);
+  it('has fifteen models (four ships, the dachshund and ten creatures); the Bulwark takes five hits', () => {
+    expect(Object.keys(SHIPS)).toEqual(['trident', 'manta', 'halo', 'bulwark', 'dachshund', 'dragon', 'unicorn', 'phoenix', 'shark', 'owl', 'bee', 'duck', 'pig', 'octopus', 'jelly']);
     const w = duel('bulwark', 'manta');
     expect(w.gliders[0].hull).toBe(5);
     expect(w.gliders[1].hull).toBe(3);
@@ -208,5 +208,14 @@ describe('bonus rings', () => {
     for (const id of ['trident', 'manta', 'halo', 'bulwark'] as const) expect(d.turn).toBeGreaterThan(SHIPS[id].turn);
     const w = duel('dachshund', 'manta');
     expect(w.gliders[0].ship.id).toBe('dachshund');
+  });
+
+  it('swaps the ship in flight (cheat 22222): new hull, special ready', () => {
+    const w = duel('trident', 'manta');
+    w.gliders[0].hull = 1;
+    w.swapShip(0, SHIPS.duck);
+    expect(w.gliders[0].ship.id).toBe('duck');
+    expect(w.gliders[0].hull).toBe(5);
+    expect(w.specialWait(w.gliders[0])).toBe(0);
   });
 });

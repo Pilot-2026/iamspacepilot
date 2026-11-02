@@ -2679,3 +2679,52 @@ body.has-foot:not(.flying) .music-toast {
   grid-row: span 2;
   margin: 0;
 }
+
+/* ---------- Title: thick black outline on "iam", a thicker outline on "Space"; click it to see the intro again ---------- */
+
+/* The stroke is drawn under the fill, so only its outer half shows: a thick, clean outline around the yellow. */
+.wordmark .w1 {
+  -webkit-text-stroke: 0.11em var(--ink);
+  paint-order: stroke fill;
+}
+
+.wordmark .w2 {
+  -webkit-text-stroke: 0.045em var(--ink);
+}
+
+.intro-title .w1 .il {
+  -webkit-text-stroke: 0.11em var(--ink);
+  paint-order: stroke fill;
+}
+
+.intro-title .w2 .il {
+  -webkit-text-stroke: 0.045em var(--ink);
+}
+
+.m-title-btn {
+  display: block;
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.m-title-btn:hover,
+.m-title-btn:focus-visible {
+  transform: scale(1.02);
+  outline: none;
+}
+
+.m-title-btn .wordmark {
+  display: block;
+}
+
+.ship-group {
+  grid-column: 1 / -1;
+  margin: 18px 0 0;
+}

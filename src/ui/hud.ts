@@ -181,6 +181,14 @@ export class Hud {
     }
   }
 
+  /** The ship changed during the round: hull pips and the special's name. */
+  setShip(world: World, player: number): void {
+    const g = world.gliders[player];
+    this.hullEl.innerHTML = '<i></i>'.repeat(g.ship.hull);
+    this.hullPips = Array.from(this.hullEl.querySelectorAll('i'));
+    this.specName.textContent = g.ship.special.name;
+  }
+
   setup(world: World, colors: number[], player: number): void {
     this.colors = colors;
     const g = world.gliders[player];
