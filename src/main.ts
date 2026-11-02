@@ -91,6 +91,8 @@ class App {
   private lastMicOpen = false;
   /** Online: seconds until the pilot board is refreshed. */
   private boardIn = 0;
+  /** Online: who switched the arena, shown when the new round starts there. */
+  private arenaNote = { text: '', at: 0 };
   /** Online: when the round results appear. */
   private resultsAt = 0;
   /** Online: keeps the game running while the tab is in the background. */
@@ -758,13 +760,20 @@ class App {
   }
 
   /**
-   * Cheat: press 1 five times, or tap the score five times, to jump straight
+   * Cheat: press 1 five times, or click the score five times, to jump straight
    * to the next level (after the last one back to the first). The current
-   * round is dropped without a score.
+   * round is dropped without a score. Online the arena changes for everybody:
+   * the host starts a new round there at once.
    */
   private cheat(): void {
-    if (this.session) return;
     if (this.state !== 'playing' && this.state !== 'paused' && this.state !== 'ending') return;
+    const s = this.session;
+    if (s) {
+      const level = LEVELS[s.match.nextArena()];
+      this.arenaNote = { text: `Arena switched: Level ${level.index} · ${level.name}`, at: performance.now() };
+      if (!s.isHost) this.hud.feed(`Next arena: Level ${level.index} · ${level.name} · the host starts it`);
+      return;
+    }
     const cur = this.profile.solo.level;
     const next = nextLevel(cur) ?? LEVEL_ORDER[0];
     this.profile.unlocked = Math.max(this.profile.unlocked, LEVELS[next].index);
@@ -788,22 +797,28 @@ class App {
 
   /**
    * Cheat (keyboard only): 22222 switches to the next ship right away, in the
-   * running round; press it again for the next one, through all ships. A round
-   * with a switched ship is not posted to the online leaderboard.
+   * running round; press it again for the next one, through all ships. A solo
+   * round with a switched ship is not posted to the online leaderboard. Online
+   * the other pilots see the new ship at once.
    */
   private shipCheat(): void {
     const w = this.world;
-    if (this.session || !w || !this.view) return;
+    if (!w || !this.view) return;
     if (this.state !== 'playing' && this.state !== 'paused' && this.state !== 'ending') return;
     const g = w.gliders[this.local];
     if (!g?.alive) return;
     const next = SHIP_ORDER[(SHIP_ORDER.indexOf(g.ship.id) + 1) % SHIP_ORDER.length];
-    w.swapShip(this.local, SHIPS[next]);
+    const s = this.session;
+    if (s) {
+      if (w !== s.match.world || !s.match.swapShip(next)) return;
+    } else {
+      w.swapShip(this.local, SHIPS[next]);
+      this.cheated = true;
+    }
     this.view.swapModel(this.local);
     this.hud.setShip(w, this.local);
     this.profile.ship = next;
     saveProfile(this.profile);
-    this.cheated = true;
     this.hud.message(SHIPS[next].name, `${SHIPS[next].special.name} · 22222 for the next`, 1.4);
     this.sound.special('phase', 0.5);
   }
@@ -923,6 +938,19 @@ class App {
       roundStart: (w, local) => this.startOnlineRound(w, local),
       roundEnd: (r) => this.endOnlineRound(r),
       crash: (id, crash) => this.onlineCrash(id, crash),
+      shipSwap: (id, ship) => {
+        const s = this.session;
+        if (!s || !this.world || this.world !== s.match.world) return;
+        this.view?.swapModel(id);
+        this.hud.feed(`${s.match.pilots[id]?.name ?? 'A pilot'} now flies the ${SHIPS[ship].name}`);
+      },
+      arena: (name, level) => {
+        const L = LEVELS[level];
+        const text = `${name} switched the arena: Level ${L.index} · ${L.name}`;
+        // The new round may already be flying there; otherwise the note waits for it.
+        if (this.state === 'playing' && this.world?.spec.id === level) this.hud.feed(text);
+        else this.arenaNote = { text, at: performance.now() };
+      },
       closed: (reason) => this.leaveOnline(reason),
     };
   }
@@ -945,6 +973,8 @@ class App {
     const colors = w.gliders.map((_, i) => view.colorOf(i));
     this.hud.setup(w, colors, local);
     this.hud.setOnline(true);
+    if (this.arenaNote.text && performance.now() - this.arenaNote.at < 4000) this.hud.feed(this.arenaNote.text);
+    this.arenaNote = { text: '', at: 0 };
     const s = this.session;
     this.hud.radio(s.speaking(), s.talking);
     this.menu.hide();

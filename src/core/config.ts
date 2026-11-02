@@ -6,7 +6,7 @@
 export const CORE_VERSION = 'core-10';
 
 /** Version of the online message format. Devices with different versions cannot play together. */
-export const NET_PROTOCOL = 'p4';
+export const NET_PROTOCOL = 'p5';
 /** Pilots per online game, bots included. */
 export const MAX_ONLINE_PILOTS = 8;
 

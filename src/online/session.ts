@@ -1,5 +1,5 @@
 import type { ShipId } from '../core/ships';
-import type { CrashInfo } from '../core/types';
+import type { CrashInfo, LevelId } from '../core/types';
 import type { World } from '../core/world';
 import { boardRows, type BoardRow } from './board';
 import { hostGame, joinGame, updateGame, type Ticket } from '../net/games';
@@ -17,6 +17,10 @@ export interface SessionEvents {
   roundStart(world: World, local: number): void;
   roundEnd(result: RoundResult): void;
   crash(id: number, crash: CrashInfo): void;
+  /** Cheat: another pilot's glider became another ship during the round. */
+  shipSwap(id: number, ship: ShipId): void;
+  /** Cheat: another pilot switched the arena; a new round there follows. */
+  arena(name: string, level: LevelId): void;
   /** The connection ended without the pilot leaving. */
   closed(reason: string): void;
 }
@@ -111,6 +115,8 @@ export class OnlineSession {
         ev.roundEnd(r);
       },
       onCrash: (id, crash) => ev.crash(id, crash),
+      onShipSwap: (id, ship) => ev.shipSwap(id, ship),
+      onArena: (name, level) => ev.arena(name, level),
       onVersionMismatch: (name) => {
         s.outdated.add(name);
         ev.lobby();

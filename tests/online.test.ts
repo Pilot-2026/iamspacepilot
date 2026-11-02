@@ -6,7 +6,8 @@ import type { World } from '../src/core/world';
 import { boardRows } from '../src/online/board';
 import type { RadioEntry } from '../src/online/livekit';
 import { MicGesture } from '../src/ui/mic';
-import { GAME_VERSION, NEXT_ROUND_MS, OnlineMatch, type MatchSettings, type Msg, type Peer, type RoundResult, type Transport } from '../src/online/match';
+import { nextLevel } from '../src/core/levels';
+import { ARENA_GAP_MS, GAME_VERSION, NEXT_ROUND_MS, OnlineMatch, type MatchSettings, type Msg, type Peer, type RoundResult, type Transport } from '../src/online/match';
 
 /** In-memory network: every message is JSON encoded like on the real wire and delivered on deliver(). */
 class FakeNet {
@@ -66,6 +67,8 @@ class Node implements Transport {
   results: RoundResult[] = [];
   crashes: { id: number; crash: CrashInfo }[] = [];
   mismatch: string[] = [];
+  swaps: { id: number; ship: string }[] = [];
+  arenas: { name: string; level: string }[] = [];
   lobbies = 0;
 
   constructor(
@@ -94,6 +97,8 @@ class Node implements Transport {
       onRoundEnd: (r: RoundResult) => void this.results.push(r),
       onCrash: (id: number, crash: CrashInfo) => void this.crashes.push({ id, crash }),
       onVersionMismatch: (name: string) => void this.mismatch.push(name),
+      onShipSwap: (id: number, ship: string) => void this.swaps.push({ id, ship }),
+      onArena: (name: string, level: string) => void this.arenas.push({ name, level }),
     };
   }
 }
@@ -476,7 +481,8 @@ describe('pilot board', () => {
     const alpha = rows.find((r) => r.name === 'Alpha')!;
     const bravo = rows.find((r) => r.name === 'Bravo')!;
     const bot = rows.find((r) => r.bot)!;
-    expect(alpha).toMatchObject({ you: true, talking: true, down: false, wins: 0 });
+    // The round is random (seed, bot ships): Alpha may have crashed too; the board says so.
+    expect(alpha).toMatchObject({ you: true, talking: true, down: !m.world!.gliders[0].alive, wins: 0 });
     expect(alpha.points!).toBeGreaterThan(0);
     expect(bravo).toMatchObject({ you: false, talking: true, down: true, wins: 2 });
     expect(bot.wins).toBe(-1);
@@ -564,5 +570,73 @@ describe('radio microphone button', () => {
     expect(m.on).toBe(true);
     m.setLatched(false);
     expect(m.on).toBe(false);
+  });
+});
+
+describe('cheats online', () => {
+  it('switches a glider to another ship in the running round, for everyone', () => {
+    const net = new FakeNet();
+    const a = net.join('Alpha', { bots: 1, difficulty: 'pilot' });
+    const b = net.join('Bravo');
+    net.deliver();
+    a.match.startRound();
+    net.deliver();
+    fly(net, 200);
+    const wa = a.match.world!;
+    const wb = b.match.world!;
+    const before = wb.gliders[1].p.clone();
+    expect(b.match.swapShip('dragon')).toBe(true);
+    net.deliver();
+    // Same round, same place, new ship: no restart.
+    expect(a.match.world).toBe(wa);
+    expect(b.match.world).toBe(wb);
+    expect(wb.gliders[1].ship.id).toBe('dragon');
+    expect(wb.gliders[1].p.distSq(before)).toBeLessThan(1e-9);
+    expect(wa.gliders[1].ship.id).toBe('dragon');
+    expect(a.swaps).toEqual([{ id: 1, ship: 'dragon' }]);
+    expect(a.match.pilots[1].ship).toBe('dragon');
+    // It stays the ship for the next rounds.
+    expect(b.match.ship).toBe('dragon');
+    expect(a.match.shipOf('Bravo')).toBe('dragon');
+    fly(net, 60);
+    expect(wa.gliders[1].ship.id).toBe('dragon');
+    // Nobody can switch someone else's glider.
+    a.match.receive('Bravo', { t: 'ship', r: a.match.round, id: 0, ship: 'pig' });
+    expect(wa.gliders[0].ship.id).not.toBe('pig');
+  });
+
+  it('moves everybody to the next arena, from the host or a guest', () => {
+    const net = new FakeNet();
+    const a = net.join('Alpha', { level: 'cloud-sea', bots: 1, difficulty: 'pilot' });
+    const b = net.join('Bravo');
+    net.deliver();
+    a.match.startRound();
+    net.deliver();
+    fly(net, 240);
+    const first = a.match.round;
+    const next = nextLevel('cloud-sea')!;
+    // A guest asks: the host starts a new round in the next arena right away.
+    expect(b.match.nextArena()).toBe(next);
+    net.deliver();
+    expect(a.match.round).toBe(first + 1);
+    expect(b.match.round).toBe(first + 1);
+    expect(a.match.world!.spec.id).toBe(next);
+    expect(b.match.world!.spec.id).toBe(next);
+    expect(a.arenas).toEqual([{ name: 'Bravo', level: next }]);
+    // The dropped round has no winner and counts for nobody.
+    expect(a.results).toHaveLength(0);
+    expect(b.results).toHaveLength(0);
+    // Pressed twice at once: one arena further, not two.
+    net.time += ARENA_GAP_MS + 10;
+    a.match.nextArena();
+    b.match.nextArena();
+    net.deliver();
+    const third = nextLevel(next)!;
+    expect(a.match.world!.spec.id).toBe(third);
+    expect(b.match.world!.spec.id).toBe(third);
+    expect(a.match.round).toBe(first + 2);
+    // The new round flies normally.
+    fly(net, 240);
+    expect(a.match.world!.gliders.some((g) => g.alive)).toBe(true);
   });
 });
