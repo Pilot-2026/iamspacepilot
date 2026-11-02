@@ -86,7 +86,7 @@ export class InputManager {
         return;
       }
       if ((e.code === 'Digit2' || e.code === 'Numpad2') && !e.repeat) {
-        if (countTap(this.shipTaps, performance.now(), 4)) this.onShipCheat();
+        if (countTap(this.shipTaps)) this.onShipCheat();
         return;
       }
       if (e.code === 'MetaLeft' || e.code === 'MetaRight') this.metaHeld = true;

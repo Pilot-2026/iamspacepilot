@@ -57,7 +57,8 @@ export interface Glider {
   shots: number;
   /** Hits landed on other gliders. */
   hits: number;
-  readonly ship: ShipSpec;
+  /** The ship model (changes only with the 22222 cheat). */
+  ship: ShipSpec;
   /** Tick from which the special can be used again. */
   specialReady: number;
   /** Tick when the running special effect ends. */

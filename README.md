@@ -8,17 +8,18 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 
 - Free flight (turn, pitch, roll). The light wall rolls with your glider: fly level and it stands upright, roll 90° and it lies flat, keep rolling and it twists into a spiral.
 - Ten levels, each with its own look, climbing from the sky into deep space: Cloud Sea, Storm Eye (lightning, updraft), Frost Heights, Jet Stream (wind), Aurora, Orbit, Moon Shadow, Ring World, Nebula (plasma bolts) and Lattice Core (a core that pulls you in). Win a level to open the next one.
-- Cheats for testing (keyboard only; on phones and tablets they are switched off because they were too easy to trigger by accident): press 1 five times, or click the score five times, to jump to the next level; 2222 flies the next ship; 33333 turns your glider into the dachshund (and back) until the page is reloaded; 99999 in a menu shows the visit statistics.
+- Cheats for testing (keyboard only; on phones and tablets they are switched off because they were too easy to trigger by accident): press 1 five times, or click the score five times, to jump to the next level; 22222 switches to the next ship right away in the running round (press again for the next, through all fifteen; that round is not posted online); 33333 turns your glider into the dachshund (and back) until the page is reloaded; 99999 in a menu shows the visit statistics.
 - 1 to 7 bots in three difficulties (Rookie, Pilot, Ace). They fly smooth curves and only turn hard when a wall is close. The difficulty also sets the pace for everyone in the round: on Rookie all ships fly at 60% speed, on Pilot at normal speed, on Ace at 125% (online too, from the host's choice).
 - The arenas are big (twice the size they started with) and the arena shield closes in after 30 seconds.
 - Every ship casts a shadow on the floor, and yours also on the nearest shield wall and the ceiling, so you can feel how far away the grid is.
 - Boost: hold to speed up, refill it by flying close along walls or through rings.
 - Gun: shots fly straight through walls and only hit other ships, curving a little towards a ship in front of them. Three hits bring a ship down, and the gun overheats when you hold the trigger too long. Bots shoot too, never at their own team.
-- Five ships to choose from in the hangar, each with its own handling and a special ability (key C). Every visit starts with the Trident; your choice holds until the page is reloaded:
+- Fifteen ships to choose from in the hangar, each with its own handling and a special ability (key C). Picking one takes you straight back. Every visit starts with the Trident; your choice holds until the page is reloaded:
   - **Trident** (gunship): Trident Burst fires a fan of five shots; its shots fly 20% faster.
   - **Manta** (interceptor): Afterburner, two seconds at top speed; sharpest turns, faster slipstream.
   - **Halo** (phase runner): Phase Shift, 1.5 seconds flying through walls, obstacles and shots; rolls 40% faster.
   - **Bulwark** (heavy): Shockwave wipes out enemy shots nearby and jams their guns; takes five hits.
+  - **Ten creatures**, also only from the hangar: Dragon (Dragon Roar), Unicorn (Rainbow Dash), Phoenix (Firestorm), Rocket Shark (Feeding Frenzy), Night Owl (Silent Wings), Bumblebee (Sting Swarm), Rubber Duck (Mega Quack), Flying Pig (Hog Rocket), Octo Alien (Ink Barrage) and Space Jelly (Ghost Drift). Colourful, built from many parts and alive: wings flap, tails sway, tentacles wave, the duck's scarf flutters and its jet glows.
   - **Dachshund** (good boy, only from the hangar: it does not fly in the intro or behind the menus, and bots never fly it): a brown dachshund galloping through the air, tail wagging, ears flapping, looking around when it is not shooting. It spits bones instead of shots; Bone Barrage spits a fan of five. Turns tighter than any ship.
 - Bonus rings: fly through one for boost and the bonus it shows by colour: triple shot, big wall, shield, cool gun, turbo, seeker shots or repair. Rings work online too.
 - Light walls are twice as high as before. They leave the ship narrow and spread out behind it.

@@ -22,7 +22,7 @@ import { integrateGlider, tailPoint, type Glider } from './glider';
 import { LEVELS, type LevelSpec } from './levels';
 import { LEVEL_OBSTACLES, Obstacle } from './obstacles';
 import { BIG_WALL, POWERS, POWER_ORDER, RAPID_INTERVAL, SEEKER_CONE, SEEKER_HOMING, ringHash, type PowerId } from './powerups';
-import { JAM_TICKS, SHIPS, SHOCKWAVE_RADIUS, type ShipId, type SpecialKind } from './ships';
+import { JAM_TICKS, SHIPS, SHOCKWAVE_RADIUS, type ShipId, type ShipSpec, type SpecialKind } from './ships';
 import { AXIS_FWD, AXIS_LEFT, AXIS_UP, Quat, TWO_PI, V3, dcos, dsin } from './math';
 import { Rng } from './rng';
 import { SEG_SHIFT, SpatialHash, Trail, quadCorners, segQuad, segSegDistSq, segmentBounds, wallDistSq } from './trail';
@@ -643,6 +643,17 @@ export class World {
       }
     }
     return best * len;
+  }
+
+  /** Cheat: glider i flies another ship from now on, with a full hull and the special ready. */
+  swapShip(i: number, ship: ShipSpec): void {
+    const g = this.gliders[i];
+    if (!g || !g.alive) return;
+    g.ship = ship;
+    g.hull = ship.hull;
+    g.specialReady = this.tick;
+    g.specialUntil = -1;
+    this.updateMods(g);
   }
 
   /** Flight factors for this tick: ship, afterburner and turbo. */
