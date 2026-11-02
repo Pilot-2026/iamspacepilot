@@ -1004,23 +1004,24 @@ kbd {
   box-shadow: 0 0 16px var(--hud);
 }
 
+/* Steering with the right thumb (the stick), boost and the rest under the left thumb. */
 .t-boost {
-  right: calc(5% + var(--safe-r));
+  left: calc(5% + var(--safe-l));
   bottom: calc(9% + var(--safe-b));
   width: 84px;
   height: 84px;
 }
 
 .t-roll-l {
-  right: calc(5% + 98px + var(--safe-r));
-  bottom: calc(7% + var(--safe-b));
+  left: calc(5% + 14px + var(--safe-l));
+  bottom: calc(9% + 98px + var(--safe-b));
   width: 56px;
   height: 56px;
 }
 
 .t-roll-r {
-  right: calc(5% + 14px + var(--safe-r));
-  bottom: calc(9% + 98px + var(--safe-b));
+  left: calc(5% + 98px + var(--safe-l));
+  bottom: calc(7% + var(--safe-b));
   width: 56px;
   height: 56px;
 }
@@ -1328,7 +1329,7 @@ kbd {
 }
 
 .t-fire {
-  right: calc(5% + 108px + var(--safe-r));
+  left: calc(5% + 108px + var(--safe-l));
   bottom: calc(9% + 70px + var(--safe-b));
   width: 72px;
   height: 72px;
@@ -1554,7 +1555,7 @@ kbd {
 }
 
 .t-special {
-  right: calc(5% + 178px + var(--safe-r));
+  left: calc(5% + 178px + var(--safe-l));
   bottom: calc(7% + var(--safe-b));
   width: 64px;
   height: 64px;
@@ -2662,4 +2663,19 @@ body.has-foot:not(.flying) .music-toast {
 
 .st-bars li {
   font-size: 13px;
+}
+
+/* Touch: the left thumb's buttons sit under the top-left panels, so score, pilots and time share one short row. */
+#hud.touch .h-tr {
+  grid-template-columns: auto auto auto;
+  grid-template-rows: auto auto;
+  grid-auto-flow: column;
+  column-gap: 14px;
+  row-gap: 0;
+  padding: 4px 10px 5px;
+}
+
+#hud.touch .h-tr .h-score {
+  grid-row: span 2;
+  margin: 0;
 }

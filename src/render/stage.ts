@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SHIP_ORDER, type ShipId } from '../core/ships';
+import { FLEET, type ShipId } from '../core/ships';
 import type { DogMesh } from './dachshund';
 import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { sharedTextures } from './textures';
@@ -310,7 +310,7 @@ export class MenuStage {
     const end = new THREE.Vector3(-side * (halfW + 35), y1, -d + (Math.random() * 60 - 30)).add(c);
     const mid = start.clone().lerp(end, 0.5).add(new THREE.Vector3(0, (Math.random() * 2 - 1) * halfH * 0.5, (Math.random() * 2 - 1) * 40));
     const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
-    const id = SHIP_ORDER[Math.floor(Math.random() * SHIP_ORDER.length)];
+    const id = FLEET[Math.floor(Math.random() * FLEET.length)];
     const dur = curve.getLength() / (44 + Math.random() * 24);
     const trail = intro ? INTRO_COLORS[id] : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
     const f = this.makeFlyer(id, curve, this.time, dur, trail, intro, scale);
@@ -339,7 +339,7 @@ export class MenuStage {
       false,
       'centripetal',
     );
-    const id = SHIP_ORDER[Math.floor(Math.random() * SHIP_ORDER.length)];
+    const id = FLEET[Math.floor(Math.random() * FLEET.length)];
     const dur = 2.3 + Math.random() * 0.6;
     const trail = intro ? INTRO_COLORS[id] : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
     const f = this.makeFlyer(id, curve, this.time, dur, trail, intro, 1);
@@ -376,7 +376,7 @@ export class MenuStage {
       pts = [P(side * (halfW + 40), y0, -d), P(0, y0 + halfH * 0.15, -d * 0.8), P(-side * (halfW + 40), y0 - halfH * 0.1, -d)];
     }
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
-    const id = SHIP_ORDER[Math.floor(Math.random() * SHIP_ORDER.length)];
+    const id = FLEET[Math.floor(Math.random() * FLEET.length)];
     const dur = curve.getLength() / (55 + Math.random() * 25);
     const trail = intro ? INTRO_COLORS[id] : MENU_TRAILS[Math.floor(Math.random() * MENU_TRAILS.length)];
     const f = this.makeFlyer(id, curve, this.time, dur, trail, intro, scale);

@@ -1,6 +1,6 @@
 /**
- * Touch controls: a floating stick appears wherever the left thumb lands.
- * Boost and the two roll buttons sit in an arc around the right thumb.
+ * Touch controls: a floating stick appears wherever the right thumb lands.
+ * Boost, roll, fire and the special sit in an arc around the left thumb.
  * Two fingers (not on a button) move the camera: pinch to zoom, drag to look
  * around the ship, a quick two-finger tap puts the camera back.
  */
@@ -134,7 +134,7 @@ export class TouchControls {
   private placeStickHome(): void {
     const h = this.root.clientHeight || window.innerHeight;
     const w = this.root.clientWidth || window.innerWidth;
-    this.stick.style.left = `${Math.max(90, w * 0.12)}px`;
+    this.stick.style.left = `${w - Math.max(90, w * 0.12)}px`;
     this.stick.style.top = `${h - Math.max(100, h * 0.24)}px`;
   }
 
@@ -173,7 +173,7 @@ export class TouchControls {
       this.startPinch(id, at, e.pointerId, here);
       return;
     }
-    if (this.stickId === -1 && e.clientX < this.root.clientWidth * 0.55) {
+    if (this.stickId === -1 && e.clientX > this.root.clientWidth * 0.45) {
       this.stickId = e.pointerId;
       this.stickAt = performance.now();
       this.stickMoved = 0;

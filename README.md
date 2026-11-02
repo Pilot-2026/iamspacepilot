@@ -19,7 +19,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
   - **Manta** (interceptor): Afterburner, two seconds at top speed; sharpest turns, faster slipstream.
   - **Halo** (phase runner): Phase Shift, 1.5 seconds flying through walls, obstacles and shots; rolls 40% faster.
   - **Bulwark** (heavy): Shockwave wipes out enemy shots nearby and jams their guns; takes five hits.
-  - **Dachshund** (good boy): a brown dachshund galloping through the air, tail wagging, ears flapping, looking around when it is not shooting. It spits bones instead of shots; Bone Barrage spits a fan of five. Turns tighter than any ship.
+  - **Dachshund** (good boy, only from the hangar: it does not fly in the intro or behind the menus, and bots never fly it): a brown dachshund galloping through the air, tail wagging, ears flapping, looking around when it is not shooting. It spits bones instead of shots; Bone Barrage spits a fan of five. Turns tighter than any ship.
 - Bonus rings: fly through one for boost and the bonus it shows by colour: triple shot, big wall, shield, cool gun, turbo, seeker shots or repair. Rings work online too.
 - Light walls are twice as high as before. They leave the ship narrow and spread out behind it.
 - Obstacles inside the arena, only a few per level and mostly glass: clear in the middle, glowing at the edges, some grown out of rock. Glass islands with waterfalls and a glass whale (Cloud Sea), glass spires (Storm Eye), ice crystals and a glass rock with a waterfall (Frost Heights), a glass turbine ring (Jet Stream), an arch of light and a waterfall geode (Aurora), a glass space station with a satellite (Orbit), rocks with glass crystals (Moon Shadow), glass gates (Ring World), glass bubbles with glowing hearts (Nebula) and glass beams (Lattice Core). Flying into one is deadly and shots fizzle on them; flying through a waterfall only makes the water splash. They move the same way on every device, so they work online too.
@@ -32,7 +32,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 - Zoom and look around: two fingers pinch to zoom and drag to turn the camera around the ship (in the cockpit: look around), a quick two-finger tap puts it back. Mouse wheel and right mouse button on a computer, right stick on a gamepad.
 - Phones and tablets: a double tap or a pinch never zooms the page. On iPhones the sound also plays with the silent switch on and comes back after a call or another app.
 - Steering sounds: turning left and right hiss from that side in different pitches, climbing rises, diving rushes low, rolling whirrs, and every move starts with a short thruster puff.
-- Keyboard, gamepad and touch (floating stick, boost and roll buttons).
+- Keyboard, gamepad and touch: on phones and tablets you steer with the right thumb (a floating stick wherever it lands on the right half), boost, roll, fire and the special sit under the left thumb.
 - The arena shield, floor and ceiling are drawn as a glowing grid that turns red and thick when you get close, with a distance warning and a warning tone.
 - Highscores: a score for every round, the top 10 on this device and an online leaderboard for all pilots.
 - Yellow menus, callsign, synthesized sound, installable as an app.
@@ -72,8 +72,8 @@ The functions need three environment variables in Netlify, from a LiveKit Cloud 
 
 | Action                      | Keyboard              | Gamepad       | Touch                        |
 | --------------------------- | --------------------- | ------------- | ---------------------------- |
-| Turn                        | ← / → or A / D        | Left stick    | Left thumb stick             |
-| Nose down, up (flight mode) | ↑ / ↓ or W / S        | Left stick    | Left thumb stick             |
+| Turn                        | ← / → or A / D        | Left stick    | Right thumb stick            |
+| Nose down, up (flight mode) | ↑ / ↓ or W / S        | Left stick    | Right thumb stick            |
 | Roll                        | Q / E                 | LB / RB       | Roll buttons                 |
 | Fire                        | Space or left click   | LT or X       | Fire button                  |
 | Boost                       | ⌘ Command or Shift    | RT or A       | Boost button                 |
