@@ -1350,22 +1350,56 @@ kbd {
 
 /* The radio microphone closes the left thumb's arc, above the special, right of fire. */
 .t-talk {
-  left: calc(5% + 192px + var(--safe-l));
-  bottom: calc(9% + 88px + var(--safe-b));
-  width: 58px;
-  height: 58px;
+  left: calc(5% + 190px + var(--safe-l));
+  bottom: calc(9% + 84px + var(--safe-b));
+  width: 66px;
+  height: 66px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(10, 8, 24, 0.55);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
+.t-btn.t-talk svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+/* Off: a crossed-out microphone. On: the open one. */
+.t-talk .mic-on,
+.h-mic .mic-on,
+.t-talk.on .mic-off,
+.h-mic.on .mic-off {
+  display: none;
+}
+
+.t-talk.on .mic-on,
+.h-mic.on .mic-on {
+  display: block;
+}
+
+.t-mic-txt {
+  font: 800 10px/1 var(--f-data);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+/* MIC ON: bright red, white text and rim, glowing. Nothing else on screen looks like it. */
 .t-talk.on {
-  background: #ff6b6b;
-  border-color: #ff6b6b;
-  color: #05040c;
-  box-shadow: 0 0 18px #ff6b6b;
+  background: #ff3030;
+  border-color: #fff;
+  color: #fff;
+  box-shadow: 0 0 22px rgba(255, 48, 48, 0.9);
 }
 
 /* Kept open: a second ring that breathes. */
 .t-talk.open {
-  outline: 3px solid rgba(255, 107, 107, 0.75);
+  outline: 4px solid rgba(255, 70, 70, 0.85);
   outline-offset: 4px;
   animation: mic-open 1.6s ease-in-out infinite;
 }
@@ -1374,13 +1408,13 @@ kbd {
   position: absolute;
   top: 100%;
   left: 50%;
-  margin-top: 7px;
+  margin-top: 10px;
   transform: translateX(-50%);
   padding: 2px 6px;
   font: 700 9px/1 var(--f-data);
   letter-spacing: 0.14em;
-  color: #05040c;
-  background: #ff6b6b;
+  color: #fff;
+  background: #ff3030;
   border-radius: 3px;
   white-space: nowrap;
   display: none;
@@ -1393,10 +1427,10 @@ kbd {
 @keyframes mic-open {
   0%,
   100% {
-    outline-color: rgba(255, 107, 107, 0.85);
+    outline-color: rgba(255, 70, 70, 0.95);
   }
   50% {
-    outline-color: rgba(255, 107, 107, 0.25);
+    outline-color: rgba(255, 70, 70, 0.45);
   }
 }
 
@@ -1410,8 +1444,8 @@ kbd {
 /* Upright phones have room above the roll button, and the stick's home is too close otherwise. */
 @media (orientation: portrait) {
   .t-talk {
-    left: calc(5% + 13px + var(--safe-l));
-    bottom: calc(9% + 168px + var(--safe-b));
+    left: calc(5% + 9px + var(--safe-l));
+    bottom: calc(9% + 166px + var(--safe-b));
   }
 }
 
@@ -1425,8 +1459,8 @@ kbd {
   gap: 10px;
   padding: 0 14px 0 0;
   height: 48px;
-  color: #fff;
-  background: rgba(8, 6, 16, 0.5);
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(8, 6, 16, 0.55);
   border: 1.5px solid rgba(255, 255, 255, 0.4);
   border-radius: 24px;
   cursor: pointer;
@@ -1446,8 +1480,17 @@ kbd {
   flex: none;
 }
 
+.h-mic-state {
+  font: 800 14px/1 var(--f-data);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  min-width: 5.6em;
+}
+
 .h-mic-k {
   display: flex;
+  font-size: 10px;
+  opacity: 0.8;
   align-items: center;
   gap: 7px;
   white-space: nowrap;
@@ -1465,17 +1508,22 @@ kbd {
 }
 
 .h-mic.on {
-  border-color: #ff6b6b;
-  box-shadow: 0 0 16px rgba(255, 107, 107, 0.7);
+  color: #fff;
+  background: #ff3030;
+  border-color: #fff;
+  box-shadow: 0 0 20px rgba(255, 48, 48, 0.85);
 }
 
-.h-mic.on svg {
-  color: #05040c;
-  background: #ff6b6b;
+.h-mic.on .h-mic-k {
+  opacity: 1;
+}
+
+.h-mic.on kbd {
+  border-color: rgba(255, 255, 255, 0.85);
 }
 
 .h-mic.open {
-  outline: 3px solid rgba(255, 107, 107, 0.75);
+  outline: 3px solid rgba(255, 70, 70, 0.85);
   outline-offset: 3px;
   animation: mic-open 1.6s ease-in-out infinite;
 }

@@ -1,4 +1,4 @@
-import { eventTime } from './mic';
+import { MIC_OFF_ICON, MIC_ON_ICON, eventTime, micLabel } from './mic';
 
 /**
  * Touch controls: a floating stick appears wherever the right thumb lands.
@@ -16,9 +16,6 @@ export interface TouchState {
   special: boolean;
 }
 
-const MIC_ICON =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
-
 const ROLL_LEFT_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v5h5"/></svg>';
 const ROLL_RIGHT_ICON =
@@ -31,6 +28,7 @@ export class TouchControls {
   private readonly talkBtn: HTMLElement;
   /** The finger on the microphone button, -1 if none. */
   private micId = -1;
+  private micShown = '';
   /** Online radio: the microphone button was pressed or let go, with the time of the touch. */
   onMic: (down: boolean, at: number) => void = () => undefined;
   private readonly stick: HTMLElement;
@@ -60,7 +58,7 @@ export class TouchControls {
       <div class="t-btn t-boost" data-hold="boost">Boost</div>
       <div class="t-btn t-fire" data-hold="fire">Fire</div>
       <div class="t-btn t-special" data-hold="special">Special</div>
-      <div class="t-btn t-talk" data-talk role="button" aria-label="Radio: hold to talk, tap three times to keep the microphone open" hidden>${MIC_ICON}<span class="t-cap">Open</span></div>`;
+      <div class="t-btn t-talk" data-talk role="button" aria-label="Radio: hold to talk, tap three times to keep the microphone on" hidden>${MIC_ON_ICON}${MIC_OFF_ICON}<b class="t-mic-txt">MIC OFF</b><span class="t-cap">Locked</span></div>`;
     this.talkBtn = root.querySelector('.t-talk') as HTMLElement;
     this.stick = root.querySelector('.t-stick') as HTMLElement;
     this.knob = root.querySelector('.t-knob') as HTMLElement;
@@ -99,11 +97,16 @@ export class TouchControls {
     }
   }
 
-  /** Lights the radio button: live while talking, with a ring while the microphone is kept open. */
+  /** Lights the radio button: MIC ON in red while talking, a ring and "Locked" while it is kept on. */
   setMic(live: boolean, open: boolean): void {
+    const key = `${live}${open}`;
+    if (key === this.micShown) return;
+    this.micShown = key;
     this.talkBtn.classList.toggle('on', live);
     this.talkBtn.classList.toggle('open', open);
     this.talkBtn.setAttribute('aria-pressed', String(live));
+    const txt = this.talkBtn.querySelector('.t-mic-txt');
+    if (txt) txt.textContent = micLabel(live);
   }
 
   /** After a crash only the radio button stays. */

@@ -5,7 +5,7 @@ import { POWERS } from '../core/powerups';
 import type { World } from '../core/world';
 import { countTap } from '../input/input';
 import { esc } from './html';
-import { eventTime } from './mic';
+import { MIC_OFF_ICON, MIC_ON_ICON, eventTime, micLabel } from './mic';
 import { formatScore, formatTime } from './menu';
 
 const local = new V3();
@@ -18,8 +18,6 @@ function hex(c: number): string {
 const EYE_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>';
 
-const MIC_ICON =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
 const MIC_SMALL =
   '<svg class="b-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-label="talking"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
 
@@ -83,6 +81,7 @@ export class Hud {
   private readonly boardEl: HTMLElement;
   private boardHtml = '';
   private readonly micBtn: HTMLButtonElement;
+  private micShown = '';
   /** Online radio: the HUD's microphone button was pressed or let go (mouse, pen), with the time of the event. */
   onMic: (down: boolean, at: number) => void = () => undefined;
 
@@ -116,7 +115,7 @@ export class Hud {
       <div class="h-alert" hidden></div>
       <div class="h-radio" aria-live="polite" hidden></div>
       <div class="h-board" aria-label="Pilots online" hidden></div>
-      <button class="h-mic" type="button" aria-label="Radio: hold to talk (R), click three times to keep the microphone open" title="Radio: hold to talk (R) · click 3× to keep it open" hidden>${MIC_ICON}<span class="h-mic-k"><kbd>R</kbd><span data-k="mic">Hold to talk</span></span></button>
+      <button class="h-mic" type="button" aria-label="Radio: hold to talk (R), click three times to keep the microphone open" title="Radio: hold to talk (R) · click 3× to keep it on" hidden>${MIC_ON_ICON}${MIC_OFF_ICON}<b class="h-mic-state">MIC OFF</b><span class="h-mic-k"><kbd>R</kbd><span data-k="mic">hold · 3× stays on</span></span></button>
       <div class="h-power" hidden><span data-k="power"></span><span class="h-bar"><i></i></span></div>
       <div class="h-hint" hidden>Turn your phone sideways for the best view</div>`;
     const q = <T extends HTMLElement>(sel: string) => root.querySelector(sel) as T;
@@ -269,12 +268,17 @@ export class Hud {
 
   /** Lights the microphone button: live while talking, marked while it is kept open. */
   setMic(live: boolean, open: boolean): void {
+    const key = `${live}${open}`;
+    if (key === this.micShown) return;
+    this.micShown = key;
     this.micBtn.classList.toggle('on', live);
     this.micBtn.classList.toggle('open', open);
     this.micBtn.setAttribute('aria-pressed', String(live));
-    const label = open ? 'Mic open · click to close' : live ? 'Live' : 'Hold to talk';
+    const state = this.micBtn.querySelector('.h-mic-state');
+    if (state) state.textContent = micLabel(live);
+    const hint = open ? 'locked · click to turn off' : live ? 'talking' : 'hold · 3× stays on';
     const k = this.micBtn.querySelector('[data-k="mic"]');
-    if (k && k.textContent !== label) k.textContent = label;
+    if (k) k.textContent = hint;
   }
 
   /** The pilots online with their points in this round and the rounds they won. */

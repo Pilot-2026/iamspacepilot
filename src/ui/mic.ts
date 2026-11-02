@@ -7,6 +7,15 @@
  * Pure logic without the DOM, so it can be tested.
  */
 
+/** Microphone icons for the buttons: open, and crossed out when off. */
+export const MIC_ON_ICON =
+  '<svg class="mic-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+export const MIC_OFF_ICON =
+  '<svg class="mic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path d="M3.5 3.5l17 17" stroke-width="2.6"/></svg>';
+
+/** What the buttons say: MIC ON while talking (held or kept open), MIC OFF otherwise. */
+export const micLabel = (live: boolean): string => (live ? 'MIC ON' : 'MIC OFF');
+
 /** A press shorter than this is a tap. */
 export const MIC_TAP_MS = 380;
 /** Three taps within this time keep the microphone open. */
