@@ -8,9 +8,33 @@ interface TurnVoice {
 }
 
 /**
+ * The sound of a roll to one side: air whooshing over the spinning wings
+ * (filtered noise and a growling tone whose filter, loudness and stereo
+ * position swing with the spin) that spins up the longer the roll lasts.
+ */
+interface RollVoice {
+  noise: AudioBufferSourceNode;
+  tone: OscillatorNode;
+  /** The spin: sweeps filters and pan, about twice per turn. */
+  spin: OscillatorNode;
+  /** A fast flutter on top. */
+  flutter: OscillatorNode;
+  gain: GainNode;
+  /** When this roll started (audio clock), -1 while not rolling. */
+  since: number;
+}
+
+/** The two roll sounds: right bright, rising and circling clockwise; left dark, falling and circling the other way. */
+export const ROLL_VOICES = {
+  right: { noiseHz: 2100, noiseSweep: 1300, toneHz: 196, toneTo: 330, cutHz: 1500, cutSweep: 1000, pan: 0.85, flutterHz: 17, spinHz: 1.25 },
+  left: { noiseHz: 820, noiseSweep: 480, toneHz: 147, toneTo: 92, cutHz: 720, cutSweep: 420, pan: -0.85, flutterHz: 8, spinHz: 0.9 },
+} as const;
+
+/**
  * Steering sounds: a hiss panned to the side you turn to plus a whistle of
  * its own for each side (right high and fast pulsing, left low and slow),
- * a rising tone to climb, the same tone much deeper to dive, a whirr to roll.
+ * a rising tone to climb, the same tone much deeper to dive, and for each
+ * roll direction its own spinning whoosh.
  */
 interface Maneuver {
   yawSrc: AudioBufferSourceNode;
@@ -28,11 +52,20 @@ interface Maneuver {
   diveTone: OscillatorNode;
   diveOver: OscillatorNode;
   diveToneGain: GainNode;
-  roll: OscillatorNode;
-  rollPan: StereoPannerNode;
-  rollGain: GainNode;
-  lfo: OscillatorNode;
+  rollR: RollVoice;
+  rollL: RollVoice;
 }
+
+/** The layers of a shot (your own; other gliders' are quieter with distance). */
+export const SHOT = {
+  crack: 0.15,
+  growl: 0.1,
+  kick: 0.3,
+  boom: 0.17,
+  /** Level after the saturation, and of the echo. */
+  bus: 0.4,
+  echo: 0.3,
+} as const;
 
 /** Loudness of the steering sounds (gain at full deflection). */
 export const STEER_GAIN = {
@@ -44,6 +77,8 @@ export const STEER_GAIN = {
   /** Diving: the deep tone and its air rush. */
   dive: 0.04,
   diveRush: 0.05,
+  /** Each roll direction's whoosh. */
+  roll: 0.09,
 } as const;
 
 type SessionType = 'auto' | 'playback' | 'play-and-record' | 'ambient' | 'transient' | 'transient-solo';
@@ -118,6 +153,8 @@ export class Sound {
   /** Sound effects on (music has its own switch). */
   private effects = true;
   private nextWarn = 0;
+  /** Input of the shot bus (saturation and echo), made on the first shot. */
+  private shotIn: AudioNode | null = null;
   private nextShield = 0;
 
   /**
@@ -188,7 +225,14 @@ export class Sound {
     }
     this.master = this.ctx.createGain();
     this.master.gain.value = this.effects ? this.volume : 0;
-    this.master.connect(this.ctx.destination);
+    // A limiter on the effects: heavy shots and crashes stay loud without clipping.
+    const limit = this.ctx.createDynamicsCompressor();
+    limit.threshold.value = -8;
+    limit.knee.value = 6;
+    limit.ratio.value = 12;
+    limit.attack.value = 0.003;
+    limit.release.value = 0.2;
+    this.master.connect(limit).connect(this.ctx.destination);
     const len = this.ctx.sampleRate * 2;
     this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.noise.getChannelData(0);
@@ -363,26 +407,56 @@ export class Sound {
     diveTone.connect(diveToneGain);
     diveOver.connect(overGain).connect(diveToneGain);
     diveToneGain.connect(out);
-    const roll = ctx.createOscillator();
-    roll.type = 'square';
-    roll.frequency.value = 150;
-    const rollFilter = ctx.createBiquadFilter();
-    rollFilter.type = 'bandpass';
-    rollFilter.frequency.value = 900;
-    const rollPan = ctx.createStereoPanner();
-    const rollGain = gain();
-    // A fast tremolo makes the roll whirr.
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 14;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 0.5;
-    const trem = ctx.createGain();
-    trem.gain.value = 0.5;
-    lfo.connect(lfoGain).connect(trem.gain);
-    roll.connect(rollFilter).connect(trem).connect(rollPan).connect(rollGain).connect(out);
-    for (const n of [yawSrc, diveSrc]) n.start(0, Math.random());
-    for (const n of [climb, diveTone, diveOver, roll, lfo, right.osc, right.lfo, left.osc, left.lfo]) n.start();
-    return { yawSrc, yawFilter, yawPan, yawGain, right, left, climb, climbGain, diveSrc, diveFilter, diveGain, diveTone, diveOver, diveToneGain, roll, rollPan, rollGain, lfo };
+    const rollVoice = (v: (typeof ROLL_VOICES)['right' | 'left']): RollVoice => {
+      const spin = ctx.createOscillator();
+      spin.frequency.value = v.spinHz;
+      const sweep = (amount: number, param: AudioParam) => {
+        const d = ctx.createGain();
+        d.gain.value = amount;
+        spin.connect(d).connect(param);
+      };
+      // Air over the wings: band-passed noise whose band swings with the spin.
+      const noise = loop();
+      const band = ctx.createBiquadFilter();
+      band.type = 'bandpass';
+      band.Q.value = 2.6;
+      band.frequency.value = v.noiseHz;
+      sweep(v.noiseSweep, band.frequency);
+      const noiseLevel = ctx.createGain();
+      noiseLevel.gain.value = 1.6;
+      // A growl through a resonant filter that opens and closes with the spin: "vwomm vwomm".
+      const tone = ctx.createOscillator();
+      tone.type = 'sawtooth';
+      tone.frequency.value = v.toneHz;
+      const cut = ctx.createBiquadFilter();
+      cut.type = 'lowpass';
+      cut.Q.value = 7;
+      cut.frequency.value = v.cutHz;
+      sweep(v.cutSweep, cut.frequency);
+      const toneLevel = ctx.createGain();
+      toneLevel.gain.value = 0.5;
+      // Flutter, and the sound circles around you in the direction of the roll.
+      const flutter = ctx.createOscillator();
+      flutter.frequency.value = v.flutterHz;
+      const fl = ctx.createGain();
+      fl.gain.value = 0.3;
+      const trem = ctx.createGain();
+      trem.gain.value = 0.7;
+      flutter.connect(fl).connect(trem.gain);
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = v.pan * 0.35;
+      sweep(v.pan * 0.6, pan.pan);
+      const g = gain();
+      noise.connect(band).connect(noiseLevel).connect(trem);
+      tone.connect(cut).connect(toneLevel).connect(trem);
+      trem.connect(pan).connect(g).connect(out);
+      return { noise, tone, spin, flutter, gain: g, since: -1 };
+    };
+    const rollR = rollVoice(ROLL_VOICES.right);
+    const rollL = rollVoice(ROLL_VOICES.left);
+    for (const n of [yawSrc, diveSrc, rollR.noise, rollL.noise]) n.start(0, Math.random());
+    for (const n of [climb, diveTone, diveOver, right.osc, right.lfo, left.osc, left.lfo, rollR.tone, rollR.spin, rollR.flutter, rollL.tone, rollL.spin, rollL.flutter]) n.start();
+    return { yawSrc, yawFilter, yawPan, yawGain, right, left, climb, climbGain, diveSrc, diveFilter, diveGain, diveTone, diveOver, diveToneGain, rollR, rollL };
   }
 
   /**
@@ -417,10 +491,8 @@ export class Sound {
     const deep = 180 - 60 * down;
     m.diveTone.frequency.setTargetAtTime(deep, t, 0.1);
     m.diveOver.frequency.setTargetAtTime(deep * 2, t, 0.1);
-    const ar = Math.abs(r);
-    m.rollGain.gain.setTargetAtTime(0.012 * ar, t, 0.05);
-    m.roll.frequency.setTargetAtTime(130 + 80 * ar, t, 0.08);
-    m.rollPan.pan.setTargetAtTime(r * 0.6, t, 0.08);
+    this.rollSound(m.rollR, ROLL_VOICES.right, r > 0 ? r : 0, t);
+    this.rollSound(m.rollL, ROLL_VOICES.left, r < 0 ? -r : 0, t);
     // A short thruster puff when a move starts.
     const on = (v: number, last: number) => Math.abs(v) > 0.45 && Math.abs(last) <= 0.45;
     if (on(x, this.lastX)) {
@@ -429,10 +501,22 @@ export class Sound {
       this.chirp(x > 0 ? 880 : 520, x > 0 ? 1320 : 330, x > 0 ? 0.9 : -0.9);
     }
     if (on(y, this.lastY)) this.puff(y > 0 ? 1800 : 300, 0, y > 0 ? 1.6 : 0.55, 0.11);
-    if (on(r, this.lastR)) this.puff(2600, r > 0 ? 0.5 : -0.5, r > 0 ? 1.3 : 0.75);
+    // Rolls start with a swish of their own: right high and rising, left low and falling.
+    if (on(r, this.lastR)) this.puff(r > 0 ? 2800 : 900, r > 0 ? 0.8 : -0.8, r > 0 ? 1.7 : 0.45, 0.13);
     this.lastX = x;
     this.lastY = y;
     this.lastR = r;
+  }
+
+  /** One side's roll: louder with the stick, spinning up (faster, higher or deeper) the longer it lasts. */
+  private rollSound(v: RollVoice, spec: (typeof ROLL_VOICES)['right' | 'left'], amount: number, t: number): void {
+    if (amount > 0.05) {
+      if (v.since < 0) v.since = t;
+    } else v.since = -1;
+    const up = v.since < 0 ? 0 : Math.min(1, (t - v.since) / 1.1);
+    v.gain.gain.setTargetAtTime(STEER_GAIN.roll * amount * (0.75 + 0.25 * up), t, amount > 0.05 ? 0.04 : 0.09);
+    v.tone.frequency.setTargetAtTime(spec.toneHz + (spec.toneTo - spec.toneHz) * up, t, 0.12);
+    v.spin.frequency.setTargetAtTime(spec.spinHz * (0.7 + 0.9 * up) * Math.max(0.4, amount), t, 0.15);
   }
 
   /** A short sliding tone, panned. */
@@ -488,8 +572,9 @@ export class Sound {
     this.engine = null;
     const m = this.man;
     if (m) {
-      for (const g of [m.yawGain, m.right.gain, m.left.gain, m.climbGain, m.diveGain, m.diveToneGain, m.rollGain]) g.gain.setTargetAtTime(0, t, 0.05);
-      for (const n of [m.yawSrc, m.diveSrc, m.climb, m.diveTone, m.diveOver, m.roll, m.lfo, m.right.osc, m.right.lfo, m.left.osc, m.left.lfo]) n.stop(t + 0.4);
+      for (const g of [m.yawGain, m.right.gain, m.left.gain, m.climbGain, m.diveGain, m.diveToneGain, m.rollR.gain, m.rollL.gain]) g.gain.setTargetAtTime(0, t, 0.05);
+      for (const n of [m.yawSrc, m.diveSrc, m.climb, m.diveTone, m.diveOver, m.right.osc, m.right.lfo, m.left.osc, m.left.lfo]) n.stop(t + 0.4);
+      for (const v of [m.rollR, m.rollL]) for (const n of [v.noise, v.tone, v.spin, v.flutter]) n.stop(t + 0.4);
       this.man = null;
     }
     this.lastX = this.lastY = this.lastR = 0;
@@ -609,15 +694,84 @@ export class Sound {
     [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.14, t + i * 0.11));
   }
 
-  /** A shot leaves a gun. gain is lower for other gliders further away. */
+  /** Shots go through their own bus: a little saturation for weight and a short, dark echo from the arena. */
+  private shotBus(): AudioNode | null {
+    if (this.shotIn) return this.shotIn;
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return null;
+    const drive = ctx.createWaveShaper();
+    const n = 1024;
+    const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * 2 - 1;
+      curve[i] = Math.tanh(2.4 * x) / Math.tanh(2.4);
+    }
+    drive.curve = curve;
+    drive.oversample = '2x';
+    const dry = ctx.createGain();
+    dry.gain.value = SHOT.bus;
+    const delay = ctx.createDelay(0.5);
+    delay.delayTime.value = 0.11;
+    const dark = ctx.createBiquadFilter();
+    dark.type = 'lowpass';
+    dark.frequency.value = 1100;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.3;
+    const wet = ctx.createGain();
+    wet.gain.value = SHOT.echo;
+    drive.connect(dry).connect(this.master);
+    dry.connect(delay).connect(dark).connect(feedback).connect(delay);
+    dark.connect(wet).connect(this.master);
+    this.shotIn = drive;
+    return drive;
+  }
+
+  /**
+   * A shot leaves a gun: a hard crack, a falling growl, a deep kick with its
+   * octave (so phone speakers carry it) and a rolling boom with an echo.
+   * gain is lower for other gliders further away.
+   */
   shot(gain = 1): void {
     const ctx = this.ctx;
     if (!ctx || gain <= 0.01) return;
+    const out = this.shotBus() ?? undefined;
     const t = ctx.currentTime;
-    // A deep, punchy shot: a falling growl, a thump and a short burst of air.
-    this.tone(340, 0.16, 'sawtooth', 0.045 * gain, t, 80);
-    this.tone(130, 0.14, 'sine', 0.13 * gain, t, 48);
-    this.noiseBurst(0.09, 'lowpass', 1800, 260, 0.08 * gain, t);
+    const g = gain;
+    this.noiseBurst(0.05, 'bandpass', 4200, 1300, SHOT.crack * g, t, out);
+    this.growl(270, 52, 0.26, SHOT.growl * g, 2600, 180, t, out);
+    this.tone(118, 0.32, 'sine', SHOT.kick * g, t, 34, out);
+    this.tone(236, 0.17, 'sine', SHOT.kick * 0.35 * g, t, 68, out);
+    this.noiseBurst(0.45, 'lowpass', 1500, 80, SHOT.boom * g, t + 0.012, out);
+  }
+
+  /** A sawtooth sliding from f0 to f1 through a low-pass that closes from c0 to c1. */
+  private growl(f0: number, f1: number, dur: number, gain: number, c0: number, c1: number, when: number, out?: AudioNode): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f0, when);
+    o.frequency.exponentialRampToValueAtTime(f1, when + dur);
+    const o2 = ctx.createOscillator();
+    o2.type = 'sawtooth';
+    o2.frequency.setValueAtTime(f0 * 0.993, when);
+    o2.frequency.exponentialRampToValueAtTime(f1 * 0.99, when + dur);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.Q.value = 3;
+    f.frequency.setValueAtTime(c0, when);
+    f.frequency.exponentialRampToValueAtTime(c1, when + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(gain, when + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    o.connect(f);
+    o2.connect(f);
+    f.connect(g).connect(out ?? this.master);
+    for (const x of [o, o2]) {
+      x.start(when);
+      x.stop(when + dur + 0.02);
+    }
   }
 
   /** A shot hits a glider: loud when it is yours. */
@@ -682,7 +836,7 @@ export class Sound {
     this.tone(on ? 1240 : 880, 0.07, 'square', 0.03, t + 0.03);
   }
 
-  private tone(freq: number, dur: number, type: OscillatorType, gain: number, when?: number, slideTo?: number): void {
+  private tone(freq: number, dur: number, type: OscillatorType, gain: number, when?: number, slideTo?: number, out?: AudioNode): void {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
     const t = when ?? ctx.currentTime;
@@ -695,12 +849,12 @@ export class Sound {
     g.gain.linearRampToValueAtTime(gain, t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g);
-    g.connect(this.master);
+    g.connect(out ?? this.master);
     o.start(t);
     o.stop(t + dur + 0.02);
   }
 
-  private noiseBurst(dur: number, type: BiquadFilterType, f0: number, f1: number, gain: number, when: number): void {
+  private noiseBurst(dur: number, type: BiquadFilterType, f0: number, f1: number, gain: number, when: number, out?: AudioNode): void {
     const ctx = this.ctx;
     if (!ctx || !this.master || !this.noise) return;
     const src = ctx.createBufferSource();
@@ -714,7 +868,7 @@ export class Sound {
     g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
     src.connect(filter);
     filter.connect(g);
-    g.connect(this.master);
+    g.connect(out ?? this.master);
     src.start(when, Math.random());
     src.stop(when + dur + 0.05);
   }

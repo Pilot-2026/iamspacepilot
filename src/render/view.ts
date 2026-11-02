@@ -44,7 +44,13 @@ interface Rig {
   follow: number;
 }
 const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-const CHASE: Rig = { cam: v3(0, 4.2, -14), look: v3(0, 1.2, 14), up: 'ship', follow: 7 };
+/**
+ * Behind the glider, a little to its right (local -X) and above the top of
+ * the wall: straight behind you would see your own wall edge-on, from here it
+ * comes out of the tail as a narrow band. The aim moves along a bit, so the
+ * glider stays close to the middle.
+ */
+const CHASE: Rig = { cam: v3(-1.3, 5.4, -14), look: v3(0.5, 1.2, 14), up: 'ship', follow: 7 };
 const RIGS: Readonly<Record<Exclude<ViewMode, 'cockpit'>, Rig>> = {
   chase: CHASE,
   clean: CHASE,
