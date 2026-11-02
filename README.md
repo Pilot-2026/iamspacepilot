@@ -37,7 +37,7 @@ Fly free through the sky and leave a wall of light behind you. Every wall is dea
 - The arena shield, floor and ceiling are drawn as a glowing grid that turns red and thick when you get close, with a distance warning and a warning tone.
 - Highscores: a score for every round, the top 10 on this device and an online leaderboard for all pilots.
 - Yellow menus, callsign, synthesized sound, installable as an app.
-- Online: up to 8 pilots per game, bots fill empty seats. Public or private games, free-for-all or two teams. **who is online?** on the start screen lists every public game; join one with a tap, with a 5-letter code or with an invite link. Live voice radio in every game (push to talk or open mic, mute any pilot).
+- Online: up to 8 pilots per game, bots fill empty seats. Public or private games, free-for-all or two teams. **who is online?** on the start screen lists every public game; join one with a tap, with a 5-letter code or with an invite link. Live voice radio in every game (push to talk or open mic, mute any pilot). In flight a pilot board shows everybody online with their points in this round and the rounds they won, and who is talking.
 
 ## Score
 
@@ -79,7 +79,8 @@ The functions need three environment variables in Netlify, from a LiveKit Cloud 
 | Fire                        | Space or left click   | LT or X       | Fire button                  |
 | Boost                       | ⌘ Command or Shift    | RT or A       | Boost button                 |
 | Special ability             | C                     | B             | Special button               |
-| Talk (online)               | Hold R                | Y or d-pad up | Mic button (tap on, tap off) |
+| Talk (online)               | Hold R or the mic button | Y or d-pad up | Hold the mic button (left thumb) |
+| Keep the mic open (online)  | R or mic button 3× quickly, once more to close | Y 3× | Tap the mic button 3×, once more to close |
 | Camera view                 | V or the eye button   | Back          | Eye button                   |
 | Zoom, look around           | Wheel, right mouse    | Right stick   | Two fingers: pinch, drag     |
 | Music on / off              | M                     |               | Music button                 |

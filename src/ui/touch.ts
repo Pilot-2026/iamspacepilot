@@ -1,6 +1,9 @@
+import { eventTime } from './mic';
+
 /**
  * Touch controls: a floating stick appears wherever the right thumb lands.
- * Boost, roll, fire and the special sit in an arc around the left thumb.
+ * Boost, roll, fire, the special and online the radio microphone sit in an
+ * arc around the left thumb.
  * Two fingers (not on a button) move the camera: pinch to zoom, drag to look
  * around the ship, a quick two-finger tap puts the camera back.
  */
@@ -11,8 +14,6 @@ export interface TouchState {
   boost: boolean;
   fire: boolean;
   special: boolean;
-  /** Online: radio microphone open (tap to switch). */
-  talk: boolean;
 }
 
 const MIC_ICON =
@@ -26,8 +27,12 @@ const ROLL_RIGHT_ICON =
 type Hold = 'boost' | 'roll-l' | 'roll-r' | 'fire' | 'special';
 
 export class TouchControls {
-  readonly state: TouchState = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false, special: false, talk: false };
+  readonly state: TouchState = { steerX: 0, steerY: 0, roll: 0, boost: false, fire: false, special: false };
   private readonly talkBtn: HTMLElement;
+  /** The finger on the microphone button, -1 if none. */
+  private micId = -1;
+  /** Online radio: the microphone button was pressed or let go, with the time of the touch. */
+  onMic: (down: boolean, at: number) => void = () => undefined;
   private readonly stick: HTMLElement;
   private readonly knob: HTMLElement;
   private readonly buttons: Record<Hold, HTMLElement>;
@@ -55,7 +60,7 @@ export class TouchControls {
       <div class="t-btn t-boost" data-hold="boost">Boost</div>
       <div class="t-btn t-fire" data-hold="fire">Fire</div>
       <div class="t-btn t-special" data-hold="special">Special</div>
-      <div class="t-btn t-talk" data-talk aria-label="Talk on the radio" hidden>${MIC_ICON}</div>`;
+      <div class="t-btn t-talk" data-talk role="button" aria-label="Radio: hold to talk, tap three times to keep the microphone open" hidden>${MIC_ICON}<span class="t-cap">Open</span></div>`;
     this.talkBtn = root.querySelector('.t-talk') as HTMLElement;
     this.stick = root.querySelector('.t-stick') as HTMLElement;
     this.knob = root.querySelector('.t-knob') as HTMLElement;
@@ -82,27 +87,35 @@ export class TouchControls {
   hide(): void {
     this.root.hidden = true;
     this.reset();
+    this.releaseMic();
   }
 
   /** Online games get a radio button. */
   setTalk(on: boolean): void {
     this.talkBtn.hidden = !on;
-    if (!on) this.setTalking(false);
+    if (!on) {
+      this.releaseMic();
+      this.setMic(false, false);
+    }
   }
 
-  setTalking(on: boolean): void {
-    this.state.talk = on;
-    this.talkBtn.classList.toggle('on', on);
+  /** Lights the radio button: live while talking, with a ring while the microphone is kept open. */
+  setMic(live: boolean, open: boolean): void {
+    this.talkBtn.classList.toggle('on', live);
+    this.talkBtn.classList.toggle('open', open);
+    this.talkBtn.setAttribute('aria-pressed', String(live));
   }
 
   /** After a crash only the radio button stays. */
   setSpectating(on: boolean): void {
     this.root.classList.toggle('spectating', on);
-    if (on) {
-      const talk = this.state.talk;
-      this.reset();
-      this.setTalking(talk);
-    }
+    if (on) this.reset();
+  }
+
+  private releaseMic(at = performance.now()): void {
+    if (this.micId === -1) return;
+    this.micId = -1;
+    this.onMic(false, at);
   }
 
   /** The special button, so the HUD can show its cooldown. */
@@ -140,16 +153,19 @@ export class TouchControls {
 
   private down(e: PointerEvent): void {
     e.preventDefault();
-    if ((e.target as HTMLElement).closest('[data-talk]')) {
-      this.setTalking(!this.state.talk);
-      return;
-    }
-    const target = (e.target as HTMLElement).closest('[data-hold]') as HTMLElement | null;
     try {
       this.root.setPointerCapture(e.pointerId);
     } catch {
       // Some browsers refuse capture for synthetic events; tracking still works.
     }
+    if ((e.target as HTMLElement).closest('[data-talk]')) {
+      // One finger at a time on the microphone; it talks for as long as it stays down.
+      if (this.micId !== -1) return;
+      this.micId = e.pointerId;
+      this.onMic(true, eventTime(e));
+      return;
+    }
+    const target = (e.target as HTMLElement).closest('[data-hold]') as HTMLElement | null;
     if (target) {
       const hold = target.dataset.hold as Hold;
       this.holds.set(e.pointerId, hold);
@@ -239,6 +255,11 @@ export class TouchControls {
   }
 
   private up(e: PointerEvent): void {
+    if (e.pointerId === this.micId) {
+      // The touch's own time: a slow frame between finger down and up must not turn a tap into a hold.
+      this.releaseMic(eventTime(e));
+      return;
+    }
     if (e.pointerId === this.stickId) this.releaseStick();
     this.free.delete(e.pointerId);
     const p = this.pinch;

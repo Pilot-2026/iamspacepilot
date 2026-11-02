@@ -32,6 +32,7 @@ import { Hud } from './ui/hud';
 import { Menu, formatScore, type MenuScreen, type ResultInfo } from './ui/menu';
 import { TEAM_NAMES } from './ui/online-screens';
 import { TouchControls } from './ui/touch';
+import { MicGesture } from './ui/mic';
 
 const PLAYER = 0;
 
@@ -84,9 +85,12 @@ class App {
   private session: OnlineSession | null = null;
   /** Counts join attempts, so a cancelled one is ignored when it finishes. */
   private joining = 0;
-  /** Talk button in the lobby (toggle). */
-  private talkToggle = false;
+  /** Radio microphone: hold to talk, three taps keep it open (touch button, HUD button, R key, lobby button). */
+  private readonly mic = new MicGesture();
   private lastTalk = false;
+  private lastMicOpen = false;
+  /** Online: seconds until the pilot board is refreshed. */
+  private boardIn = 0;
   /** Online: when the round results appear. */
   private resultsAt = 0;
   /** Online: keeps the game running while the tab is in the background. */
@@ -110,6 +114,8 @@ class App {
     this.input.onLook = (z, yaw, pitch) => this.look(z, yaw, pitch);
     this.touch.onLook = (z, yaw, pitch) => this.look(z, yaw, pitch);
     this.touch.onLookReset = () => this.view?.resetLook();
+    this.touch.onMic = (down, at) => (down ? this.mic.down('touch', at) : this.mic.up('touch', at));
+    this.hud.onMic = (down, at) => (down ? this.mic.down('hud', at) : this.mic.up('hud', at));
     this.musicButton = this.makeMusicButton();
     this.sound.onTrack = (name) => this.showTrack(name);
     // Music starts straight away where the browser allows it, otherwise with the first tap or key.
@@ -148,9 +154,7 @@ class App {
         session: () => this.session,
         leave: () => this.leaveOnline(),
         resumeFlight: () => this.resume(),
-        toggleTalk: () => {
-          this.talkToggle = !this.talkToggle;
-        },
+        toggleTalk: () => this.mic.setLatched(!this.mic.latched),
         touch: () => isTouchDevice(),
       },
     });
@@ -896,8 +900,9 @@ class App {
       return;
     }
     this.session = res.session;
-    this.talkToggle = false;
+    this.mic.reset();
     this.lastTalk = false;
+    this.lastMicOpen = false;
     this.menu.show('lobby');
   }
 
@@ -947,8 +952,8 @@ class App {
     if (isTouchDevice()) this.touch.show();
     else this.touch.hide();
     this.touch.setTalk(true);
-    this.touch.setTalking(this.talkToggle);
     this.touch.setSpectating(false);
+    this.boardIn = 0;
     this.hud.setTouch(this.touch.visible);
     this.startView();
     this.input.reset();
@@ -1028,6 +1033,9 @@ class App {
     this.hud.setOnline(false);
     this.touch.setTalk(false);
     this.touch.hide();
+    this.mic.reset();
+    this.lastTalk = false;
+    this.lastMicOpen = false;
     this.view?.clear();
     this.world = null;
     this.resultsAt = 0;
@@ -1037,20 +1045,41 @@ class App {
     this.releaseWakeLock();
   }
 
-  /** Push to talk from the T key, a gamepad, the touch mic button or the lobby button. */
+  /**
+   * The radio microphone, from the R key or a gamepad, the touch and HUD
+   * microphone buttons and the lobby's talk button: talks while held, three
+   * quick taps keep it open, one more tap closes it.
+   */
   private updateTalk(): void {
     const s = this.session;
     if (!s) return;
-    if (this.state === 'menu' && this.touch.state.talk !== this.talkToggle) this.touch.setTalking(this.talkToggle);
-    const touchTalk = this.touch.visible && this.touch.state.talk;
-    if (this.state === 'playing') this.talkToggle = touchTalk;
-    const want = this.input.talkHeld() || this.talkToggle || touchTalk;
-    if (want === this.lastTalk) return;
-    this.lastTalk = want;
-    // iPhone: the microphone needs a recording audio session, set before the mic opens.
-    if (want) this.sound.setCapture(true);
-    s.setTalking(want);
-    this.sound.radio(want);
+    const now = performance.now();
+    this.mic.set('key', this.input.talkHeld(), now);
+    const want = this.mic.on;
+    const open = this.mic.latched;
+    if (open !== this.lastMicOpen) {
+      this.lastMicOpen = open;
+      if (this.state === 'playing') this.hud.feed(open ? 'Microphone stays open · tap the mic once to close it' : 'Microphone closed');
+    }
+    if (want !== this.lastTalk) {
+      this.lastTalk = want;
+      // iPhone: the microphone needs a recording audio session, set before the mic opens.
+      if (want) this.sound.setCapture(true);
+      s.setTalking(want);
+      this.sound.radio(want);
+    }
+    const live = s.talking;
+    const kept = open || this.profile.online.openMic;
+    this.touch.setMic(live, kept);
+    this.hud.setMic(live, kept);
+  }
+
+  /** The pilot board: who flies online, with points and wins, a few times a second. */
+  private updateBoard(s: OnlineSession, dt: number): void {
+    this.boardIn -= dt;
+    if (this.boardIn > 0) return;
+    this.boardIn = 0.25;
+    this.hud.board(s.board());
   }
 
   private frameOnline(now: number, dt: number): void {
@@ -1065,6 +1094,7 @@ class App {
     view.render(this.acc / DT, dt);
     const portrait = isTouchDevice() && window.innerHeight > window.innerWidth;
     this.hud.update(w, this.local, dt, portrait, s.match.round);
+    this.updateBoard(s, dt);
     this.afterHud();
     const g = w.gliders[this.local];
     if (g.alive && w.phase !== 'countdown') {
@@ -1109,6 +1139,8 @@ class App {
     }
     if (document.hidden) {
       s.match.dropOut();
+      // Fingers and keys still down are never let go in the background.
+      this.mic.release();
       s.setTalking(false);
       this.lastTalk = false;
       this.bgLast = performance.now();

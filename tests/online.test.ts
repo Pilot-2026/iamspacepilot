@@ -3,6 +3,9 @@ import { GUN } from '../src/core/config';
 import { Quat, V3 } from '../src/core/math';
 import type { CrashInfo, PilotInput } from '../src/core/types';
 import type { World } from '../src/core/world';
+import { boardRows } from '../src/online/board';
+import type { RadioEntry } from '../src/online/livekit';
+import { MicGesture } from '../src/ui/mic';
 import { GAME_VERSION, NEXT_ROUND_MS, OnlineMatch, type MatchSettings, type Msg, type Peer, type RoundResult, type Transport } from '../src/online/match';
 
 /** In-memory network: every message is JSON encoded like on the real wire and delivered on deliver(). */
@@ -447,5 +450,119 @@ describe('online match', () => {
     b.match.setSettings({ level: 'nebula' });
     net.deliver();
     expect(a.match.settings.level).toBe('cloud-sea');
+  });
+});
+
+describe('pilot board', () => {
+  const radio = (identity: string, local = false, speaking = false): RadioEntry => ({ identity, name: identity, local, speaking, muted: false, live: speaking });
+
+  it('lists everybody in the round with points, most first, then the pilots waiting', () => {
+    const net = new FakeNet();
+    const a = net.join('Alpha', { bots: 1, difficulty: 'pilot' });
+    const b = net.join('Bravo');
+    net.deliver();
+    a.match.startRound();
+    net.deliver();
+    // Bravo dives into the sea of clouds, Alpha and the bot fly on.
+    fly(net, 180 + 600, (n) => (n === b ? { steerX: 0, steerY: -1, roll: 0, boost: true } : GENTLE));
+    const m = a.match;
+    const wins = new Map([['Bravo', 2]]);
+    const room = [radio('Alpha', true), radio('Bravo', false, true), radio('Charlie')];
+    const rows = boardRows(m.world, m.pilots, m.local, m.roundDifficulty, wins, room, true);
+    expect(rows.map((r) => r.name)).toEqual(expect.arrayContaining(['Alpha', 'Bravo', 'Charlie']));
+    expect(rows).toHaveLength(4);
+    const flying = rows.filter((r) => r.glider >= 0);
+    for (let i = 1; i < flying.length; i++) expect(flying[i - 1].points!).toBeGreaterThanOrEqual(flying[i].points!);
+    const alpha = rows.find((r) => r.name === 'Alpha')!;
+    const bravo = rows.find((r) => r.name === 'Bravo')!;
+    const bot = rows.find((r) => r.bot)!;
+    expect(alpha).toMatchObject({ you: true, talking: true, down: false, wins: 0 });
+    expect(alpha.points!).toBeGreaterThan(0);
+    expect(bravo).toMatchObject({ you: false, talking: true, down: true, wins: 2 });
+    expect(bot.wins).toBe(-1);
+    // Charlie joined during the round and waits for the next one, at the end of the list.
+    expect(rows[rows.length - 1]).toMatchObject({ name: 'Charlie', glider: -1, points: null });
+    // A pilot who left during the round stays on the board, marked.
+    const left = boardRows(m.world, m.pilots, m.local, m.roundDifficulty, wins, [radio('Alpha', true)], false);
+    expect(left.find((r) => r.name === 'Bravo')).toMatchObject({ gone: true });
+    expect(left.find((r) => r.name === 'Alpha')).toMatchObject({ talking: false });
+  });
+
+  it('shows the room before the first round', () => {
+    const rows = boardRows(null, [], -1, 'pilot', new Map(), [radio('Alpha', true), radio('Bravo')], false);
+    expect(rows.map((r) => [r.name, r.points, r.you])).toEqual([
+      ['Alpha', null, true],
+      ['Bravo', null, false],
+    ]);
+  });
+});
+
+describe('radio microphone button', () => {
+  it('talks while held and stops when let go', () => {
+    const m = new MicGesture();
+    m.down('touch', 0);
+    expect(m.on).toBe(true);
+    m.up('touch', 2000);
+    expect(m.on).toBe(false);
+    expect(m.latched).toBe(false);
+  });
+
+  it('stays open after three quick taps and closes with the next tap', () => {
+    const m = new MicGesture();
+    for (const t of [0, 300, 600]) {
+      m.down('touch', t);
+      m.up('touch', t + 120);
+    }
+    expect(m.latched).toBe(true);
+    expect(m.on).toBe(true);
+    // The closing tap still talks while it is down.
+    m.down('touch', 3000);
+    expect(m.on).toBe(true);
+    m.up('touch', 3100);
+    expect(m.on).toBe(false);
+    // Two more taps do not open it again.
+    for (const t of [3400, 3700]) {
+      m.down('touch', t);
+      m.up('touch', t + 100);
+    }
+    expect(m.latched).toBe(false);
+  });
+
+  it('needs the three taps close together and short', () => {
+    const slow = new MicGesture();
+    for (const t of [0, 900, 1800]) {
+      slow.down('hud', t);
+      slow.up('hud', t + 100);
+    }
+    expect(slow.latched).toBe(false);
+    const long = new MicGesture();
+    long.down('touch', 0);
+    long.up('touch', 100);
+    long.down('touch', 250);
+    long.up('touch', 900);
+    long.down('touch', 1000);
+    long.up('touch', 1080);
+    expect(long.latched).toBe(false);
+  });
+
+  it('counts the key and the buttons as one press, and keeps the latch in the background', () => {
+    const m = new MicGesture();
+    m.set('key', true, 0);
+    m.down('touch', 50);
+    m.set('key', false, 1000);
+    expect(m.on).toBe(true);
+    m.up('touch', 1500);
+    expect(m.on).toBe(false);
+    for (const t of [2000, 2200, 2400]) {
+      m.set('key', true, t);
+      m.set('key', true, t + 16);
+      m.set('key', false, t + 90);
+    }
+    expect(m.latched).toBe(true);
+    m.down('touch', 3000);
+    m.release();
+    expect(m.on).toBe(true);
+    m.setLatched(false);
+    expect(m.on).toBe(false);
   });
 });

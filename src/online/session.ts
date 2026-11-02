@@ -1,6 +1,7 @@
 import type { ShipId } from '../core/ships';
 import type { CrashInfo } from '../core/types';
 import type { World } from '../core/world';
+import { boardRows, type BoardRow } from './board';
 import { hostGame, joinGame, updateGame, type Ticket } from '../net/games';
 import type { Profile } from '../storage/profile';
 import { LiveKitLink, type LinkStatus, type RadioEntry } from './livekit';
@@ -150,6 +151,12 @@ export class OnlineSession {
       .radio()
       .map((r) => ({ ...r, host: r.identity === host, wins: this.wins.get(r.identity) ?? 0, ship: this.match.shipOf(r.identity) }))
       .sort((a, b) => (order.get(a.identity) ?? 0) - (order.get(b.identity) ?? 0) || a.identity.localeCompare(b.identity));
+  }
+
+  /** The pilot board for the round that is flying now. */
+  board(): BoardRow[] {
+    const m = this.match;
+    return boardRows(m.world, m.pilots, m.local, m.roundDifficulty, this.wins, this.link.radio(), this.talking);
   }
 
   /** Names of remote pilots talking right now. */
