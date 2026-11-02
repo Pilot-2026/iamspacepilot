@@ -1,8 +1,8 @@
 import { CORE_VERSION, MAX_ONLINE_PILOTS, NET_PROTOCOL } from '../core/config';
 import { PACE } from '../core/solo';
-import { LEVELS } from '../core/levels';
+import { LEVELS, LEVEL_ORDER, nextLevel } from '../core/levels';
 import { isPower, type PowerId } from '../core/powerups';
-import { SHIP_ORDER, isShip, type ShipId, type SpecialKind } from '../core/ships';
+import { SHIPS, SHIP_ORDER, isShip, type ShipId, type SpecialKind } from '../core/ships';
 import { BOT_NAMES } from '../core/solo';
 import type { CrashInfo, CrashKind, Difficulty, LevelId, PilotInput } from '../core/types';
 import { World, type WorldSetup } from '../core/world';
@@ -22,6 +22,8 @@ import { World, type WorldSetup } from '../core/world';
 export const GAME_VERSION = `${NET_PROTOCOL}.${CORE_VERSION}`;
 export const MAX_PILOTS = MAX_ONLINE_PILOTS;
 export const NEXT_ROUND_MS = 8000;
+/** The host takes at most one arena change per this time, so two pilots pressing at once skip one arena, not two. */
+export const ARENA_GAP_MS = 1500;
 
 export type Mode = 'ffa' | 'teams';
 
@@ -52,6 +54,10 @@ export type Msg =
   | { t: 'x'; r: number; id: number; k: SpecialKind; p: number[] }
   /** Glider id flew through ring k (placed for the n-th time) and got power-up pw. */
   | { t: 'g'; r: number; id: number; k: number; n: number; pw: PowerId }
+  /** Cheat: glider id switched to another ship in the running round. */
+  | { t: 'ship'; r: number; id: number; ship: ShipId }
+  /** Cheat: a pilot wants the next arena now; the host starts a new round there. */
+  | { t: 'arena'; level: LevelId }
   | { t: 'end'; r: number; winner: number; team: number; places: number[] };
 
 export interface Peer {
@@ -91,6 +97,10 @@ export interface MatchCallbacks {
   onCrash(id: number, crash: CrashInfo): void;
   /** Another device runs a different game version. */
   onVersionMismatch(name: string): void;
+  /** Cheat: another pilot's glider became another ship during the round. */
+  onShipSwap?(id: number, ship: ShipId): void;
+  /** Cheat: a pilot (empty name: this one) switched the arena; the host starts the new round. */
+  onArena?(name: string, level: LevelId): void;
 }
 
 const CRASH_KINDS: readonly CrashKind[] = ['wall', 'shield', 'floor', 'ceiling', 'collision', 'lightning', 'core', 'obstacle', 'shot', 'left'];
@@ -121,6 +131,8 @@ export class OnlineMatch {
   private sent = new Map<number, number>();
   private ticks = 0;
   private endSent = false;
+  /** Host: when the last arena change was taken. */
+  private arenaAt = -1e9;
 
   constructor(
     private readonly t: Transport,
@@ -217,6 +229,41 @@ export class OnlineMatch {
   /** Ship a pilot picked for the next round, as far as this device knows. */
   shipOf(identity: string): ShipId {
     return identity === this.t.self ? this.me.ship : (this.ships.get(identity) ?? 'trident');
+  }
+
+  /**
+   * Cheat: this pilot's glider becomes another ship right away, in the running
+   * round, for everyone. It also stays the ship for the next rounds.
+   */
+  swapShip(ship: ShipId): boolean {
+    const w = this.world;
+    const id = this.local;
+    if (!w || !this.flying || id < 0 || !w.gliders[id]?.alive || !isShip(ship)) return false;
+    w.swapShip(id, SHIPS[ship]);
+    this.pilots[id] = { ...this.pilots[id], ship };
+    this.t.send({ t: 'ship', r: this.round, id, ship });
+    this.setShip(ship);
+    return true;
+  }
+
+  /**
+   * Cheat: on to the next arena (after the last one back to the first), for
+   * everybody. The host starts a new round there at once; a guest asks the host.
+   */
+  nextArena(): LevelId {
+    const level = nextLevel(this.world?.spec.id ?? this.settings.level) ?? LEVEL_ORDER[0];
+    this.t.send({ t: 'arena', level });
+    if (this.isHost) this.jumpToArena(level);
+    return level;
+  }
+
+  /** Host: drops the running round (no winner) and starts the next one in another arena. */
+  private jumpToArena(level: LevelId): void {
+    const now = this.clock();
+    if (now - this.arenaAt < ARENA_GAP_MS) return;
+    this.arenaAt = now;
+    this.settings = { ...this.settings, level };
+    this.startRound();
   }
 
   /** Host: change level, mode, bots or difficulty for the next round. */
@@ -521,6 +568,24 @@ export class OnlineMatch {
         if (from !== this.hostIdentity || m.r !== this.round || !finiteList(m.places)) return;
         this.applyEnd(m);
         break;
+      case 'ship': {
+        const w = this.world;
+        if (!w || m.r !== this.round || !Number.isInteger(m.id) || this.owned.has(m.id) || this.ownerOf(m.id) !== from || !isShip(m.ship)) return;
+        if (!w.gliders[m.id]?.alive) return;
+        w.swapShip(m.id, SHIPS[m.ship]);
+        this.pilots[m.id] = { ...this.pilots[m.id], ship: m.ship };
+        this.ships.set(from, m.ship);
+        this.cb.onShipSwap?.(m.id, m.ship);
+        break;
+      }
+      case 'arena': {
+        if (!LEVELS[m.level]) return;
+        const name = this.t.peers().find((p) => p.identity === from)?.name ?? '';
+        if (!name) return;
+        this.cb.onArena?.(name, m.level);
+        if (this.isHost) this.jumpToArena(m.level);
+        break;
+      }
     }
   }
 }
