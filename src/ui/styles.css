@@ -2573,3 +2573,93 @@ body.has-foot:not(.flying) .music-toast {
   user-select: none;
   -webkit-user-select: none;
 }
+
+.st-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.st-tile {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+}
+
+.st-tile b {
+  font: 800 clamp(22px, 3vw, 32px) / 1 var(--f-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.st-tile span {
+  font: 700 12px/1.2 var(--f-data);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.st-tile small {
+  font: 600 12px/1.3 var(--f-body);
+  color: var(--ink-2);
+}
+
+.st-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 4px 28px;
+}
+
+.st-table {
+  font-size: 13px;
+}
+
+.st-table th,
+.st-table td {
+  padding: 5px 8px 5px 0;
+  white-space: nowrap;
+}
+
+.st-ip {
+  font-family: var(--f-data);
+}
+
+.st-scroll {
+  max-height: 340px;
+  overflow: auto;
+}
+
+.st-unlock {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+
+.st-unlock input {
+  min-width: 200px;
+  padding: 10px 12px;
+  font: 600 15px var(--f-body);
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.st-bars {
+  gap: 4px;
+}
+
+.st-bars li {
+  font-size: 13px;
+}

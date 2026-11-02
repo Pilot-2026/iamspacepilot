@@ -107,7 +107,7 @@
 
       <div class="box">
         <p><strong>In short</strong></p>
-        <p>You can fly solo without giving any personal data. No cookies for tracking, no advertising. We only count visits anonymously (totals, no addresses, nothing that points to a person).</p>
+        <p>You can fly solo without giving any personal data. No cookies for tracking, no advertising. We count visits for statistics, with shortened IP addresses only (never the full address).</p>
         <p>If you post a score, your callsign and score are public on the leaderboard.</p>
         <p>If you play online, other pilots see your callsign. If you talk on the radio, everyone in that game hears you live, including strangers. We do not record the radio.</p>
         <p>Be respectful. You use the online features and the radio at your own risk. We are not responsible for what other pilots say or do.</p>
@@ -138,8 +138,10 @@
       <h3>2.6 How long data is kept</h3>
       <p>Leaderboard entries are kept as long as the game and its leaderboard exist, unless you ask us to delete them. Game sessions and radio audio are not stored after a game ends. Technical logs are kept by the hosting and service providers for a short time according to their own rules. Data on your device stays until you delete it.</p>
 
-      <h3>2.7 Anonymous visit statistics</h3>
-      <p>To know how often the game is played, every page load and every flight adds one to a few counters: the total, the day, the country and city, the type of device (phone, tablet or computer), the website you came from (only its name, e.g. google.com) and the level flown. Country and city are worked out by our hosting provider from the connection at that moment; we never receive or store your IP address, and the counters cannot be linked to you or to each other. Nothing is stored on your device for this. Legal basis: our legitimate interest in knowing how the game is used (Art. 6(1)(f) GDPR). The totals are stored in Google Firebase (see 2.5).</p>
+      <h3>2.7 Visit statistics</h3>
+      <p>To know how often and from where the game is played, every page load and every flight adds to counters: the total, the day, the country and city, the type of device (phone, tablet or computer), the website you came from (only its name, e.g. google.com) and the level flown. Country and city are worked out by our hosting provider from the connection at that moment.</p>
+      <p>To count how many different people visit and how many come back, each visit also updates one record per visitor. It is identified by a pseudonymous key, a hash of your IP address and your browser with a secret value, which cannot be turned back into the address. The record keeps your IP address <strong>shortened</strong> (the last part removed, e.g. 84.115.12.x), country, city, device, the day of your first and last visit and how many visits. <strong>Your full IP address is never stored.</strong> Nothing is stored on your device for this, and the records are not combined with your callsign or anything else. Only the operator can see the list of visitors.</p>
+      <p>Legal basis: our legitimate interest in knowing how and where the game is used and in recognising misuse (Art. 6(1)(f) GDPR). The statistics are kept permanently, as long as the game exists. You can object at any time and ask us to delete your record (contact via the Impressum; as we cannot identify you ourselves, tell us your network and browser or visit from the same device so we can find the key). The data is stored in Google Firebase (see 2.5).</p>
 
       <h2>3. Your rights</h2>
       <p>Under the GDPR you have the right to access your data, to have it corrected or deleted, to restrict its processing, to data portability, to object to processing based on legitimate interest, and to withdraw a consent at any time with effect for the future. To use these rights, for example to have a callsign and its scores deleted from the leaderboard, contact us using the details in the <a href="https://www.pilotfilm.at/impressum" target="_blank" rel="noopener">Impressum</a>. Because we do not know who is behind a callsign, we may ask you to prove that it is yours (for example by using the browser in which you created it).</p>

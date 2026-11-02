@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SHIP_ORDER, type ShipId } from '../core/ships';
+import type { DogMesh } from './dachshund';
 import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { sharedTextures } from './textures';
 
@@ -140,7 +141,7 @@ interface Bolt {
 }
 
 /** Strong colours that stand out on the yellow sky. */
-const INTRO_COLORS: Record<ShipId, number> = { trident: 0xd10000, manta: 0x000088, halo: 0xd4007a, bulwark: 0x00806a };
+const INTRO_COLORS: Record<ShipId, number> = { trident: 0xd10000, manta: 0x000088, halo: 0xd4007a, bulwark: 0x00806a, dachshund: 0x8a4415 };
 /** The intro choreography is over by then; afterwards ships keep coming while the title waits. */
 const INTRO_END = 7.6;
 const MENU_TRAILS = [0x0a0a0a, 0xff2d55, 0x7b2dff, 0x0050ff, 0x00a86b, 0xff6a00];
@@ -514,6 +515,7 @@ export class MenuStage {
         this.shoot(g, this.mode === 'intro' ? 0xa60000 : 0x0a0a0a, f.scale);
       }
       for (const fl of f.ship.flames) fl.scale.setScalar(f.ship.flame * (0.9 + Math.random() * 0.25));
+      (f.ship as Partial<DogMesh>).animate?.(now, dt, 30, false);
     }
     for (const f of this.flyers) f.trail.update(now);
     for (let k = this.fading.length - 1; k >= 0; k--) {

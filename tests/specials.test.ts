@@ -38,8 +38,8 @@ function duel(a: ShipId, b: ShipId = 'trident', opts: { wall?: boolean; bAt?: nu
 const shotsOf = (w: World, id: number) => w.events.filter((e) => e.type === 'shot' && e.id === id).length;
 
 describe('ships', () => {
-  it('has four models; the Bulwark takes five hits', () => {
-    expect(Object.keys(SHIPS)).toEqual(['trident', 'manta', 'halo', 'bulwark']);
+  it('has five models (four ships and the dachshund); the Bulwark takes five hits', () => {
+    expect(Object.keys(SHIPS)).toEqual(['trident', 'manta', 'halo', 'bulwark', 'dachshund']);
     const w = duel('bulwark', 'manta');
     expect(w.gliders[0].hull).toBe(5);
     expect(w.gliders[1].hull).toBe(3);
@@ -200,5 +200,13 @@ describe('bonus rings', () => {
     expect(g.hull).toBe(2);
     expect(g.power).toBe(null);
     expect(GUN.hull).toBe(3);
+  });
+
+  it('lets the dachshund spit a fan of five bones and turn tighter than any ship', () => {
+    const d = SHIPS.dachshund;
+    expect(d.special.kind).toBe('burst');
+    for (const id of ['trident', 'manta', 'halo', 'bulwark'] as const) expect(d.turn).toBeGreaterThan(SHIPS[id].turn);
+    const w = duel('dachshund', 'manta');
+    expect(w.gliders[0].ship.id).toBe('dachshund');
   });
 });

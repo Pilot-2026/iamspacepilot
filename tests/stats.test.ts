@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Doc } from '../server/firestore';
-import { deviceOf, fieldKey, handleStats, handleVisit, viennaDay, type StatsStore } from '../server/stats';
+import { deviceOf, fieldKey, handleStats, handleVisit, maskIp, viennaDay, visitorKey, type StatsStore } from '../server/stats';
 
 /** Keeps documents in memory and does what Firestore's commit does for our counters. */
 class MemoryStore implements StatsStore {
@@ -21,8 +21,8 @@ class MemoryStore implements StatsStore {
       .sort((a, b) => Number(b[field] ?? 0) - Number(a[field] ?? 0))
       .slice(0, limit);
   }
-  async countGreater() {
-    return 0;
+  async countGreater(collection: string, field: string, value: number) {
+    return [...this.docs.entries()].filter(([k, d]) => k.startsWith(`${collection}/`) && Number(d[field] ?? 0) > value).length;
   }
   async increment(updates: { path: string; inc: Record<string, number>; set?: Record<string, unknown>; min?: Record<string, number> }[]) {
     for (const u of updates) {
@@ -70,7 +70,7 @@ describe('visit statistics', () => {
       since: string;
       all: Record<string, Record<string, number>>;
       recent: Record<string, Record<string, number>>;
-      days: { day: string; visits: number; flights: number }[];
+      days: { day: string; visits: number; visitors: number; flights: number }[];
     };
     expect(s.ok).toBe(true);
     expect(s.total).toBe(3);
@@ -82,13 +82,54 @@ describe('visit statistics', () => {
     expect(s.recent.cities).toEqual({ Wien_AT: 1, Graz_AT: 1, Munchen_DE: 1 });
     expect(s.recent.sources).toEqual({ google_com: 1, direct: 2 });
     expect(s.days).toEqual([
-      { day: '2026-11-02', visits: 1, flights: 0 },
-      { day: '2026-11-01', visits: 2, flights: 1 },
+      { day: '2026-11-02', visits: 1, visitors: 0, flights: 0 },
+      { day: '2026-11-01', visits: 2, visitors: 0, flights: 1 },
     ]);
   });
 
   it('keeps working without a database', async () => {
     const res = await handleVisit(visit({ kind: 'visit' }), { store: null });
     expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
+  });
+
+  it('shortens addresses and makes keys that cannot be read back', () => {
+    expect(maskIp('84.115.12.201')).toBe('84.115.12.x');
+    expect(maskIp('2a02:8388:1:2:3:4:5:6')).toBe('2a02:8388:1:…');
+    expect(maskIp('nonsense')).toBe('unknown');
+    const k = visitorKey('84.115.12.201', 'UA', 'salt');
+    expect(k).toMatch(/^[0-9a-f]{24}$/);
+    expect(visitorKey('84.115.12.201', 'UA', 'salt')).toBe(k);
+    expect(visitorKey('84.115.12.202', 'UA', 'salt')).not.toBe(k);
+  });
+
+  it('counts unique and returning visitors and shows the list only to the owner', async () => {
+    const store = new MemoryStore();
+    let now = new Date('2026-11-01T10:00:00Z');
+    const go = (ip: string) => handleVisit(visit({ kind: 'visit' }), { store, geo: { country: 'AT', city: 'Wien' }, ip, salt: 's', now: () => now });
+    await go('84.115.12.1');
+    await go('84.115.12.1');
+    await go('91.1.2.3');
+    now = new Date('2026-11-03T10:00:00Z');
+    await go('84.115.12.1');
+    // No full address anywhere in the store.
+    expect(JSON.stringify([...store.docs.values()])).not.toContain('84.115.12.1');
+    const open = (await (await handleStats(new Request('https://x/api/stats'), { store, ownerKey: 'pw' })).json()) as Record<string, unknown>;
+    expect(open.total).toBe(4);
+    expect(open.visitors).toBe(2);
+    expect(open.returningVisitors).toBe(1);
+    expect(open.returningVisits).toBe(1);
+    expect(open.owner).toBe(false);
+    expect(open.list).toEqual([]);
+    const wrong = (await (await handleStats(new Request('https://x/api/stats?key=nope'), { store, ownerKey: 'pw' })).json()) as Record<string, unknown>;
+    expect(wrong.owner).toBe(false);
+    const mine = (await (await handleStats(new Request('https://x/api/stats?key=pw'), { store, ownerKey: 'pw' })).json()) as {
+      owner: boolean;
+      list: { ip: string; visits: number; days: number; first: string }[];
+      months: { month: string; visits: number; visitors: number }[];
+    };
+    expect(mine.owner).toBe(true);
+    expect(mine.list[0]).toMatchObject({ ip: '84.115.12.x', visits: 3, days: 2, first: '2026-11-01' });
+    expect(mine.list[1]).toMatchObject({ ip: '91.1.2.x', visits: 1, days: 1 });
+    expect(mine.months).toEqual([{ month: '2026-11', visits: 4, visitors: 3, flights: 0 }]);
   });
 });

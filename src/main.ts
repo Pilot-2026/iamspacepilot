@@ -100,13 +100,11 @@ class App {
     this.input = new InputManager(this.touch, () => this.togglePause(), () => this.cheat(), () => this.toggleMusic());
     this.input.onView = () => this.cycleView();
     this.input.onShipCheat = () => this.shipCheat();
-    this.touch.onShipCheat = () => this.shipCheat();
     this.input.onDogCheat = () => this.toggleDog();
     // 99999 shows the visit statistics (from any menu).
     this.input.onStats = () => {
       if (this.state === 'menu' && this.menu.visible) this.menu.showStats();
     };
-    this.touch.onDogCheat = () => this.toggleDog();
     this.input.onLook = (z, yaw, pitch) => this.look(z, yaw, pitch);
     this.touch.onLook = (z, yaw, pitch) => this.look(z, yaw, pitch);
     this.touch.onLookReset = () => this.view?.resetLook();
@@ -619,14 +617,16 @@ class App {
           this.sound.thunder();
           break;
         case 'shot': {
-          if (e.id === this.local && this.profile.dog) {
-            this.sound.bark();
-          } else if (e.id === this.local) {
-            this.sound.shot(1);
+          const dog = this.view?.isDog(e.id) ?? false;
+          if (e.id === this.local) {
+            if (dog) this.sound.bark();
+            else this.sound.shot(1);
           } else {
             const me = w.gliders[this.local];
             const d = Math.sqrt(w.gliders[e.id].p.distSq(me.p));
-            if (d < 140) this.sound.shot(0.3 * (1 - d / 140));
+            const near = d < 140 ? 0.3 * (1 - d / 140) : 0;
+            if (dog) this.sound.bark(near * 1.5);
+            else this.sound.shot(near);
           }
           break;
         }
@@ -765,7 +765,7 @@ class App {
     this.hud.message(`Level ${LEVELS[next].index}`, LEVELS[next].name, 1.6);
   }
 
-  /** Cheat: 33333 (or five taps in the top left corner) turns your glider into a flying dachshund, and back. */
+  /** Cheat (keyboard only): 33333 turns your glider into a flying dachshund, and back. */
   private toggleDog(): void {
     this.profile.dog = !this.profile.dog;
     saveProfile(this.profile);
@@ -775,7 +775,7 @@ class App {
     else this.hud.message(this.profile.dog ? 'Dachshund' : 'Glider', this.profile.dog ? 'Spits bones · 33333 to switch back' : '', 1.6);
   }
 
-  /** Cheat: 2222 (or five taps in the top right corner) restarts the round with the next ship. */
+  /** Cheat (keyboard only): 2222 restarts the round with the next ship. */
   private shipCheat(): void {
     if (this.session) return;
     if (this.state !== 'playing' && this.state !== 'paused' && this.state !== 'ending') return;

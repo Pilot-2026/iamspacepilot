@@ -121,8 +121,10 @@ export class Hud {
     this.hitMark = q('.h-hitmark');
     this.alive = q('[data-k="alive"]');
     this.score = q('[data-k="score"]');
-    // Five taps on the score within 2.5 seconds: jump to the next level.
+    // Five clicks on the score within 2.5 seconds: jump to the next level. Mouse only:
+    // on phones and tablets cheats were too easy to trigger by accident.
     q('.h-score').addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse') return;
       e.preventDefault();
       if (countTap(this.scoreTaps)) onCheat();
     });

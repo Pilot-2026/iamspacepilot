@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ShipId } from '../core/ships';
+import { makeDog } from './dachshund';
 
 /**
  * The four ship models, built from simple low-poly parts after Andreas
@@ -490,7 +491,7 @@ function bulwark(): Model {
   };
 }
 
-const BUILDERS: Record<ShipId, () => Model> = { trident, manta, halo, bulwark };
+const BUILDERS: Record<Exclude<ShipId, 'dachshund'>, () => Model> = { trident, manta, halo, bulwark };
 
 interface Built {
   gold: THREE.BufferGeometry;
@@ -500,9 +501,9 @@ interface Built {
   flame: number;
 }
 
-const cache = new Map<ShipId, Built>();
+const cache = new Map<Exclude<ShipId, 'dachshund'>, Built>();
 
-function built(id: ShipId): Built {
+function built(id: Exclude<ShipId, 'dachshund'>): Built {
   let b = cache.get(id);
   if (!b) {
     const m = BUILDERS[id]();
@@ -533,6 +534,7 @@ export interface ShipMesh {
 
 /** A ship of the given model; light strips and engines glow in the pilot's colour. */
 export function makeShip(id: ShipId, color: number, glowTexture: THREE.Texture): ShipMesh {
+  if (id === 'dachshund') return makeDog(color);
   const b = built(id);
   const group = new THREE.Group();
   const goldMat = new THREE.MeshStandardMaterial({ color: 0xf6c21c, emissive: 0x5a3f00, metalness: 0.22, roughness: 0.42, flatShading: true });
