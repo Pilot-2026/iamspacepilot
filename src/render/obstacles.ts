@@ -452,7 +452,7 @@ function beam(r: number, half: number, tint: number): ObstacleView {
 let streaks: THREE.CanvasTexture | null = null;
 
 /** Falling water: soft vertical streaks that scroll down. */
-function waterTexture(): THREE.CanvasTexture {
+export function waterTexture(): THREE.CanvasTexture {
   if (streaks) return streaks;
   const c = document.createElement('canvas');
   c.width = 64;

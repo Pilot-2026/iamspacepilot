@@ -10,8 +10,11 @@ import { fallColumn, makeObstacleView, type ObstacleView } from './obstacles';
 import { boneGeometry, makeDog, type DogMesh } from './dachshund';
 import { disposeShip, makeShip, type ShipMesh } from './ships';
 import { createLevelEnv, type LevelEnv } from './levels';
+import { GIANT_HALF, TUBE_RADIUS, WALL_HOLES, WALL_PLAIN, WALL_TUBE } from '../core/trail';
 import { RibbonView } from './ribbon';
 import { Shatter } from './shatter';
+import { SkyFallsView, placeSkyFalls, type SkyFall } from './skyfalls';
+import { Visitors } from './visitors';
 import { sharedTextures } from './textures';
 
 // Colours are written exactly as they should appear on screen.
@@ -145,7 +148,7 @@ function teamPalette(colors: number[], team: number): number[] {
   return list.length ? list : [team === 0 ? 0xffb02e : 0x3dd6ff];
 }
 
-const ICONS: Record<PowerId, string> = { triple: '×3', bigwall: '▲', shield: '◯', rapid: '∞', turbo: '»', seeker: '◎', repair: '+' };
+const ICONS: Record<PowerId, string> = { triple: '×3', bigwall: '▲', shield: '◯', rapid: '∞', turbo: '»', seeker: '◎', repair: '+', tube: 'Ø', giant: '△' };
 const iconCache = new Map<PowerId, THREE.Texture>();
 
 /** Symbol of a power-up, drawn once into a texture. */
@@ -200,6 +203,10 @@ export class GameView {
   private bursts: Burst[] = [];
   /** Ships crumbling after a crash. */
   private shatters: Shatter[] = [];
+  /** Waterfalls of the level (scenery: fly through them) and the hangar's creatures flying around. */
+  private skyFalls: SkyFallsView | null = null;
+  private falls: SkyFall[] = [];
+  private visitors: Visitors | null = null;
   private readonly dust: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
   private readonly dustPos: Float32Array;
   private flashLevel = 0;
@@ -360,6 +367,10 @@ export class GameView {
     this.useEnv(createLevelEnv(world.spec.id));
     const env = this.env as LevelEnv;
     this.addObstacles(world);
+    this.falls = placeSkyFalls(world);
+    this.skyFalls = new SkyFallsView(this.falls, world.spec.arena.kind === 'cylinder');
+    this.visitors = new Visitors(world, sharedTextures().glow);
+    this.scene.add(this.skyFalls.group, this.visitors.group);
 
     const members = [0, 0];
     world.gliders.forEach((g, i) => {
@@ -703,8 +714,10 @@ export class GameView {
       if (g.alive) {
         const head = this.tv.copy(FWD).applyQuaternion(pv.q).multiplyScalar(-TAIL_OFFSET).add(pv.p);
         const up = this.tv2.copy(UP).applyQuaternion(pv.q);
-        const headHalf = (g.power === 'bigwall' ? WALL_HALF * BIG_WALL : WALL_HALF) * TAPER_MIN;
-        pv.ribbon.sync(w.trails[i], w.phase === 'countdown' ? null : head, up, now, w.tick, headHalf);
+        // The newest piece is what the glider lays right now: plain, a glass tube or a giant wall.
+        const kind = g.power === 'tube' ? WALL_TUBE : g.power === 'giant' ? WALL_HOLES : WALL_PLAIN;
+        const full = kind === WALL_TUBE ? TUBE_RADIUS : kind === WALL_HOLES ? GIANT_HALF : g.power === 'bigwall' ? WALL_HALF * BIG_WALL : WALL_HALF;
+        pv.ribbon.sync(w.trails[i], w.phase === 'countdown' ? null : head, up, now, w.tick, full * TAPER_MIN, kind);
       } else {
         pv.ribbon.sync(w.trails[i], null, null, now, w.tick, 0);
       }
@@ -732,6 +745,8 @@ export class GameView {
     w.obstacles.forEach((o, k) => this.obstacleViews[k]?.update(o, this.time));
     this.updateShadows(w);
     this.updateSplashes(w);
+    this.skyFalls?.update(this.time);
+    this.visitors?.update(w, this.time, dt);
 
     this.updateBolts(w);
     this.updateShots(w, alpha);
@@ -896,12 +911,16 @@ export class GameView {
     }
   }
 
-  /** Ships flying through a waterfall make it splash. */
+  /** Ships flying through a waterfall make it splash: the ones under obstacles and the level's own. */
   private updateSplashes(w: World): void {
     const floor = w.spec.arena.floorY;
+    const cols: { x: number; z: number; top: number; r: number }[] = [];
     for (const o of w.obstacles) {
       const col = fallColumn(o);
-      if (!col) continue;
+      if (col) cols.push(col);
+    }
+    for (const f of this.falls) cols.push(f);
+    for (const col of cols) {
       w.gliders.forEach((g, i) => {
         if (!g.alive || this.time < (this.splashAt[i] ?? 0)) return;
         const pv = this.pilots[i];
@@ -1163,6 +1182,11 @@ export class GameView {
   clear(): void {
     for (const s of this.shatters) s.dispose();
     this.shatters = [];
+    this.skyFalls?.dispose();
+    this.skyFalls = null;
+    this.falls = [];
+    this.visitors?.dispose();
+    this.visitors = null;
     for (const pv of this.pilots) {
       this.scene.remove(pv.group, pv.ribbon.mesh);
       pv.ribbon.dispose();

@@ -20,6 +20,8 @@ export interface Settings {
   sounds: boolean;
   autoHorizon: boolean;
   quality: Quality;
+  /** Computer: steer with the mouse (fly where it points). */
+  mouseSteer: boolean;
 }
 
 export interface LevelRecord {
@@ -88,7 +90,7 @@ export function defaultProfile(): Profile {
     v: 1,
     callsign: '',
     pilotKey: newPilotKey(),
-    settings: { volume: 0.8, invertPitch: true, controls: 2, music: true, musicVolume: 0.6, sounds: true, autoHorizon: isTouch, quality: 'auto' },
+    settings: { volume: 0.8, invertPitch: true, controls: 2, music: true, musicVolume: 0.6, sounds: true, autoHorizon: isTouch, quality: 'auto', mouseSteer: false },
     solo: { level: 'cloud-sea', bots: 3, difficulty: 'pilot' },
     unlocked: 1,
     records: {},

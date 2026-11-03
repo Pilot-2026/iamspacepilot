@@ -3082,3 +3082,62 @@ body.has-foot:not(.flying) .music-toast {
   grid-column: 1 / -1;
   margin: 18px 0 0;
 }
+
+/* ---------- Mouse steering: the aim ring and a crosshair cursor ---------- */
+
+.h-aim {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.h-aim .a-ring {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.34);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 8;
+}
+
+.h-aim .a-dead {
+  fill: rgba(255, 255, 255, 0.18);
+  stroke: none;
+}
+
+.h-aim .a-line {
+  stroke: var(--hud);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+
+.h-aim .a-dot {
+  fill: none;
+  stroke: var(--hud);
+  stroke-width: 2;
+}
+
+.h-aim.full .a-ring {
+  stroke: var(--hud);
+  stroke-opacity: 0.5;
+}
+
+#hud.v-clean .h-aim .a-ring,
+#hud.v-clean .h-aim .a-dead {
+  display: none;
+}
+
+body.mouse-steer.flying #scene {
+  cursor: crosshair;
+}
+
+/* Controls page: action on the left, how on the right. */
+.keys.ctl td:first-child {
+  width: 38%;
+  font-weight: 700;
+}
+
+.keys.ctl kbd {
+  white-space: nowrap;
+}

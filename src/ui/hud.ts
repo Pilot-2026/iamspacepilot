@@ -3,7 +3,7 @@ import type { BoardRow } from '../online/board';
 import { V3 } from '../core/math';
 import { POWERS } from '../core/powerups';
 import type { World } from '../core/world';
-import { countTap } from '../input/input';
+import { MOUSE_DEAD, MOUSE_RANGE, countTap } from '../input/input';
 import { esc } from './html';
 import { MIC_OFF_ICON, MIC_ON_ICON, eventTime, micLabel } from './mic';
 import { formatScore, formatTime } from './menu';
@@ -78,6 +78,8 @@ export class Hud {
   private levelText = '';
   private online = false;
   private readonly tr: HTMLElement;
+  private readonly aimEl: SVGSVGElement;
+  private aimKey = '';
   private readonly boardEl: HTMLElement;
   private boardHtml = '';
   private readonly micBtn: HTMLButtonElement;
@@ -115,6 +117,7 @@ export class Hud {
       <div class="h-alert" hidden></div>
       <div class="h-radio" aria-live="polite" hidden></div>
       <div class="h-board" aria-label="Pilots online" hidden></div>
+      <svg class="h-aim" aria-hidden="true" hidden><circle class="a-ring" /><circle class="a-dead" /><line class="a-line" /><circle class="a-dot" r="5" /></svg>
       <button class="h-mic" type="button" aria-label="Radio: hold to talk (R), click three times to keep the microphone open" title="Radio: hold to talk (R) · click 3× to keep it on" hidden>${MIC_ON_ICON}${MIC_OFF_ICON}<b class="h-mic-state">MIC OFF</b><span class="h-mic-k"><kbd>R</kbd><span data-k="mic">hold · 3× stays on</span></span></button>
       <div class="h-power" hidden><span data-k="power"></span><span class="h-bar"><i></i></span></div>
       <div class="h-hint" hidden>Turn your phone sideways for the best view</div>`;
@@ -165,6 +168,7 @@ export class Hud {
     viewBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.viewName = q('.h-viewname');
     this.tr = q('.h-tr');
+    this.aimEl = root.querySelector('.h-aim') as SVGSVGElement;
     this.boardEl = q('.h-board');
     this.micBtn = q<HTMLButtonElement>('.h-mic');
     // Hold to talk; it keeps the pointer, so letting go anywhere ends the press.
@@ -264,6 +268,38 @@ export class Hud {
       this.board([]);
       this.setMic(false, false);
     }
+  }
+
+  /**
+   * Mouse steering: a ring around the middle of the screen (full deflection),
+   * the dead zone, and a line to where the glider is turning. null hides it.
+   */
+  aim(a: { x: number; y: number; mx: number; my: number } | null): void {
+    if (!a) {
+      if (!this.aimEl.hasAttribute('hidden')) this.aimEl.setAttribute('hidden', '');
+      return;
+    }
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const r = Math.min(w, h) * MOUSE_RANGE;
+    const cx = w / 2;
+    const cy = h / 2;
+    const ex = cx + a.x * r;
+    const ey = cy - a.y * r;
+    const key = `${w}x${h} ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+    this.aimEl.removeAttribute('hidden');
+    if (key === this.aimKey) return;
+    this.aimKey = key;
+    const set = (sel: string, attrs: Record<string, number>) => {
+      const el = this.aimEl.querySelector(sel);
+      if (el) for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(Math.round(v * 10) / 10));
+    };
+    this.aimEl.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    set('.a-ring', { cx, cy, r });
+    set('.a-dead', { cx, cy, r: r * MOUSE_DEAD });
+    set('.a-line', { x1: cx, y1: cy, x2: ex, y2: ey });
+    set('.a-dot', { cx: ex, cy: ey });
+    this.aimEl.classList.toggle('full', Math.hypot(a.x, a.y) > 0.98);
   }
 
   /** Lights the microphone button: live while talking, marked while it is kept open. */

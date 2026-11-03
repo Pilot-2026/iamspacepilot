@@ -29,7 +29,7 @@ function duel(opts: { teams?: boolean; wall?: boolean; shipA?: ShipId; bBehind?:
   place(1, opts.bBehind ? -90 : 30);
   if (opts.wall) {
     // A wall across the line of fire at z = -5, owned by a third glider far away.
-    w.addRemoteSamples(2, 0, [-20, 0, -5, 0, 1, 0, 4, 20, 0, -5, 0, 1, 0, 4]);
+    w.addRemoteSamples(2, 0, [-20, 0, -5, 0, 1, 0, 4, 0, 20, 0, -5, 0, 1, 0, 4, 0]);
     w.gliders[2].p.set(60, 20, 60);
   }
   return w;
