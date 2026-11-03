@@ -654,6 +654,10 @@ export class Menu {
         p.settings.mouseSteer = val === 'on';
         this.settingsChanged();
         break;
+      case 'aimring':
+        p.settings.mouseAim = val === 'on';
+        this.settingsChanged();
+        break;
       case 'quality':
         p.settings.quality = val as Quality;
         this.settingsChanged();
@@ -776,7 +780,7 @@ export class Menu {
     this.h.settingsChanged();
     const focusedVal = (document.activeElement as HTMLElement | null)?.dataset.val;
     const focusedAct = (document.activeElement as HTMLElement | null)?.dataset.act;
-    this.show('settings');
+    this.show(this.screen === 'controls' ? 'controls' : 'settings');
     if (focusedAct) (this.root.querySelector(`[data-act="${focusedAct}"][data-val="${focusedVal}"]`) as HTMLElement | null)?.focus();
   }
 
@@ -980,7 +984,7 @@ export class Menu {
     const mouse = table(
       'Mouse steering',
       [
-        ['Steer', 'Point where you want to fly: the further from the middle, the harder the turn. The ring in the middle shows it.'],
+        ['Steer', 'Point where you want to fly: the further from the middle, the harder the turn. A ring and a line in the middle show it (you can hide them above or in Settings).'],
         ['Fire', 'Left mouse button'],
         ['Boost', 'Right mouse button'],
         ['Special ability', 'Middle mouse button (or the wheel button)'],
@@ -1013,7 +1017,11 @@ export class Menu {
     );
     const steer = touch
       ? ''
-      : `<div class="m-row"><span class="lbl">Steer with</span><div class="seg"><button data-act="mouse" data-val="off" aria-pressed="${!s.mouseSteer}">Keyboard</button><button data-act="mouse" data-val="on" aria-pressed="${s.mouseSteer}">Mouse</button></div></div>`;
+      : `<div class="m-row"><span class="lbl">Steer with</span><div class="seg"><button data-act="mouse" data-val="off" aria-pressed="${!s.mouseSteer}">Keyboard</button><button data-act="mouse" data-val="on" aria-pressed="${s.mouseSteer}">Mouse</button></div></div>${
+          s.mouseSteer
+            ? `<div class="m-row"><span class="lbl">Ring and line</span><div class="seg"><button data-act="aimring" data-val="on" aria-pressed="${s.mouseAim}">Show</button><button data-act="aimring" data-val="off" aria-pressed="${!s.mouseAim}">Hide</button></div></div>`
+            : ''
+        }`;
     const parts = touch ? [touchTable, pad, keyboard] : s.mouseSteer ? [mouse, keyboard, pad, touchTable] : [keyboard, mouse, pad, touchTable];
     return frame(
       `<p class="m-kicker">Controls</p>
@@ -1077,6 +1085,7 @@ export class Menu {
         <div class="m-row"><span class="lbl">Flight mode</span>${seg('invert', [['on', 'On: ↑ nose down'], ['off', 'Off: ↑ nose up']], s.invertPitch ? 'on' : 'off')}</div>
         <div class="m-row"><span class="lbl">Auto-horizon</span>${seg('assist', [['off', 'Off'], ['on', 'On']], s.autoHorizon ? 'on' : 'off')}</div>
         ${this.h.online.touch() ? '' : `<div class="m-row"><span class="lbl">Steering</span>${seg('mouse', [['off', 'Keyboard'], ['on', 'Mouse']], s.mouseSteer ? 'on' : 'off')}</div>`}
+        ${!this.h.online.touch() && s.mouseSteer ? `<div class="m-row"><span class="lbl">Ring and line</span>${seg('aimring', [['on', 'Show'], ['off', 'Hide']], s.mouseAim ? 'on' : 'off')}</div>` : ''}
         <div class="m-row"><span class="lbl">Graphics</span>${seg('quality', [['auto', 'Auto'], ['low', 'Low'], ['high', 'High']], s.quality)}</div>
       </div>
       <p class="m-hint">Mouse steering: the glider flies where the mouse points, the further from the middle the harder it turns; left button fires, right button boosts. All controls: <button class="linkish" data-act="go" data-val="controls">Controls</button>.</p>

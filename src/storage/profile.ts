@@ -22,6 +22,8 @@ export interface Settings {
   quality: Quality;
   /** Computer: steer with the mouse (fly where it points). */
   mouseSteer: boolean;
+  /** Mouse steering: show the ring and the line in the middle of the screen. */
+  mouseAim: boolean;
 }
 
 export interface LevelRecord {
@@ -90,7 +92,7 @@ export function defaultProfile(): Profile {
     v: 1,
     callsign: '',
     pilotKey: newPilotKey(),
-    settings: { volume: 0.8, invertPitch: true, controls: 2, music: true, musicVolume: 0.6, sounds: true, autoHorizon: isTouch, quality: 'auto', mouseSteer: false },
+    settings: { volume: 0.8, invertPitch: true, controls: 2, music: true, musicVolume: 0.6, sounds: true, autoHorizon: isTouch, quality: 'auto', mouseSteer: false, mouseAim: true },
     solo: { level: 'cloud-sea', bots: 3, difficulty: 'pilot' },
     unlocked: 1,
     records: {},
