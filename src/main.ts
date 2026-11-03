@@ -326,7 +326,7 @@ class App {
   /** The HUD after the frame: cockpit screens and which parts are shown. */
   private afterHud(): void {
     this.hud.setView(this.hudView());
-    this.hud.aim(this.state === 'playing' ? this.input.mouseAim() : null);
+    this.hud.aim(this.state === 'playing' && this.profile.settings.mouseAim ? this.input.mouseAim() : null);
     const d = this.hud.cockpitDirty;
     if (d.side || d.radar) this.view?.refreshCockpit(d.side, d.radar);
     d.side = false;

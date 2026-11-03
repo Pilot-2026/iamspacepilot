@@ -18,7 +18,7 @@ export interface SkyFall {
 }
 
 /** Waterfalls per level. */
-export const SKY_FALLS = 12;
+export const SKY_FALLS = 6;
 
 /** Small seeded random numbers, so a level always looks the same. */
 function rng(seed: number): () => number {

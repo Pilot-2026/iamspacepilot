@@ -13,7 +13,7 @@ describe('scenery', () => {
     for (const id of LEVEL_ORDER) {
       const w = world(id);
       const falls = placeSkyFalls(w);
-      expect(falls.length, id).toBeGreaterThanOrEqual(SKY_FALLS - 2);
+      expect(falls.length, id).toBe(SKY_FALLS);
       const a = w.spec.arena;
       for (const f of falls) {
         expect(Math.hypot(f.x, f.z)).toBeLessThan(a.radius * 0.85);
