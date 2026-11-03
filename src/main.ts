@@ -89,6 +89,8 @@ class App {
   private readonly mic = new MicGesture();
   private lastTalk = false;
   private lastMicOpen = false;
+  /** The mouse steering hint was shown (once per visit). */
+  private mouseHinted = false;
   /** Online: seconds until the pilot board is refreshed. */
   private boardIn = 0;
   /** Online: who switched the arena, shown when the new round starts there. */
@@ -224,6 +226,8 @@ class App {
     this.sound.setSoundsEnabled(s.sounds);
     this.updateMusicButton();
     this.input.invertPitch = s.invertPitch;
+    this.input.mouseSteer = s.mouseSteer && !isTouchDevice();
+    document.body.classList.toggle('mouse-steer', this.input.mouseSteer);
     if (this.view) {
       const dpr = window.devicePixelRatio || 1;
       const ratio = s.quality === 'low' ? 1 : s.quality === 'high' ? Math.min(dpr, 2) : Math.min(dpr, isTouchDevice() ? 1.5 : 2);
@@ -286,6 +290,10 @@ class App {
     this.view?.setView('chase');
     this.view?.setTouchLayout(this.touch.visible);
     this.hud.setView('normal');
+    if (this.input.mouseSteer && !this.mouseHinted) {
+      this.mouseHinted = true;
+      this.hud.feed('Mouse steering: point where you want to fly · left button fire · right button boost · middle button special');
+    }
   }
 
   /** Eye button, V or the gamepad's back button: the next camera view. */
@@ -318,6 +326,7 @@ class App {
   /** The HUD after the frame: cockpit screens and which parts are shown. */
   private afterHud(): void {
     this.hud.setView(this.hudView());
+    this.hud.aim(this.state === 'playing' ? this.input.mouseAim() : null);
     const d = this.hud.cockpitDirty;
     if (d.side || d.radar) this.view?.refreshCockpit(d.side, d.radar);
     d.side = false;

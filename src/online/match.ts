@@ -5,7 +5,7 @@ import { isPower, type PowerId } from '../core/powerups';
 import { SHIPS, SHIP_ORDER, isShip, type ShipId, type SpecialKind } from '../core/ships';
 import { BOT_NAMES } from '../core/solo';
 import type { CrashInfo, CrashKind, Difficulty, LevelId, PilotInput } from '../core/types';
-import { World, type WorldSetup } from '../core/world';
+import { WALL_SAMPLE, World, type WorldSetup } from '../core/world';
 
 /**
  * Online game logic, independent of LiveKit and the screen, so it can be
@@ -430,7 +430,7 @@ export class OnlineMatch {
       const from = this.sent.get(id) ?? 0;
       if (tr.count > from) {
         wl.push(id, from, tr.count - from);
-        for (let k = from; k < tr.count; k++) wl.push(r3(tr.px[k]), r3(tr.py[k]), r3(tr.pz[k]), r3(tr.ux[k]), r3(tr.uy[k]), r3(tr.uz[k]), r2(tr.h[k]));
+        for (let k = from; k < tr.count; k++) wl.push(r3(tr.px[k]), r3(tr.py[k]), r3(tr.pz[k]), r3(tr.ux[k]), r3(tr.uy[k]), r3(tr.uz[k]), r2(tr.h[k]), tr.kind[k]);
         this.sent.set(id, tr.count);
       }
     }
@@ -511,9 +511,9 @@ export class OnlineMatch {
           const start = m.w[o + 1];
           const n = m.w[o + 2];
           if (!(n > 0)) break;
-          const data = m.w.slice(o + 3, o + 3 + n * 7);
+          const data = m.w.slice(o + 3, o + 3 + n * WALL_SAMPLE);
           if (!this.owned.has(id) && this.ownerOf(id) === from) w.addRemoteSamples(id, start, data);
-          o += 3 + n * 7;
+          o += 3 + n * WALL_SAMPLE;
         }
         break;
       }

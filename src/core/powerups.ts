@@ -5,7 +5,7 @@ import { TICK_RATE } from './config';
  * Every ring shows its power-up by colour before you reach it.
  */
 
-export type PowerId = 'triple' | 'bigwall' | 'shield' | 'rapid' | 'turbo' | 'seeker' | 'repair';
+export type PowerId = 'triple' | 'bigwall' | 'shield' | 'rapid' | 'turbo' | 'seeker' | 'repair' | 'tube' | 'giant';
 
 export interface PowerSpec {
   readonly id: PowerId;
@@ -25,9 +25,11 @@ export const POWERS: Readonly<Record<PowerId, PowerSpec>> = {
   turbo: { id: 'turbo', name: 'Turbo', text: 'Endless boost.', duration: 6 * TICK_RATE, color: 0xff4fd8 },
   seeker: { id: 'seeker', name: 'Seeker', text: 'Your shots hunt their targets.', duration: 12 * TICK_RATE, color: 0xb48cff },
   repair: { id: 'repair', name: 'Repair', text: 'Repairs one hit and fills the boost.', duration: 0, color: 0xffffff },
+  tube: { id: 'tube', name: 'Glass tube', text: 'Your wall becomes a thick glass tube. Open at both ends: fly through it, never through its skin.', duration: 10 * TICK_RATE, color: 0x8ff4ff },
+  giant: { id: 'giant', name: 'Giant wall', text: 'Your wall grows five times as high, with big holes to fly through.', duration: 10 * TICK_RATE, color: 0xffa94d },
 };
 
-export const POWER_ORDER: readonly PowerId[] = ['triple', 'bigwall', 'shield', 'rapid', 'turbo', 'seeker', 'repair'];
+export const POWER_ORDER: readonly PowerId[] = ['triple', 'bigwall', 'shield', 'rapid', 'turbo', 'seeker', 'repair', 'tube', 'giant'];
 
 export const isPower = (v: unknown): v is PowerId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(POWERS, v);
 

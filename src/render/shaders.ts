@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GIANT_HALF, HOLE_RADIUS, HOLE_RANGE, HOLE_SPACING } from '../core/trail';
 
 /** Sky dome: gradient, sun glow, optional horizon band and lightning flash. */
 export interface DomeOptions {
@@ -147,12 +148,21 @@ export function shieldMaterial(o: ShieldOptions): THREE.ShaderMaterial {
 export const ribbonVert = /* glsl */ `
 attribute float aSide;
 attribute float aBirth;
+attribute float aLen;
+attribute float aHalf;
+attribute float aKind;
 uniform float uNow;
 varying float vSide;
 varying float vFlash;
 varying float vDist;
+varying float vLen;
+varying float vHalf;
+varying float vKind;
 void main() {
   vSide = aSide;
+  vLen = aLen;
+  vHalf = aHalf;
+  vKind = aKind;
   vFlash = exp(-max(uNow - aBirth, 0.0) * 4.0);
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   vDist = -mv.z;
@@ -169,9 +179,22 @@ uniform float uDim;
 varying float vSide;
 varying float vFlash;
 varying float vDist;
+varying float vLen;
+varying float vHalf;
+varying float vKind;
 void main() {
   float e = abs(vSide);
   float edge = smoothstep(0.72, 0.97, e);
+  // Giant wall: round holes (the same ones the simulation lets you through), with a glowing rim.
+  if (vKind > 1.5) {
+    float f = vHalf / ${GIANT_HALF.toFixed(3)};
+    float n = floor(vLen / ${HOLE_SPACING.toFixed(3)} + 0.5);
+    float ds = vLen - n * ${HOLE_SPACING.toFixed(3)};
+    float dv = vSide * vHalf - ${HOLE_RANGE.toFixed(3)} * sin(n * 2.1) * f;
+    float d = sqrt(ds * ds + dv * dv) - ${HOLE_RADIUS.toFixed(3)} * f;
+    if (d < 0.0) discard;
+    edge = max(edge, 1.0 - smoothstep(0.0, 0.9, d));
+  }
   float a = (uCore + edge * (1.0 - uCore)) * uDim;
   vec3 c = mix(uColor, vec3(1.0), clamp(edge * 0.55 + vFlash * 0.5, 0.0, 1.0));
   a = min(1.0, a + vFlash * 0.35);
@@ -201,6 +224,53 @@ void main() {
   float a = (0.3 + 0.7 * core) * uDim;
   vec3 c = mix(uColor, vec3(1.0), clamp(core * 0.6 + vFlash * 0.4, 0.0, 1.0));
   a = min(1.0, a + vFlash * 0.3);
+  float d = clamp(vDist / uFogFar, 0.0, 1.0);
+  a *= 1.0 - d * 0.75;
+  c = mix(c, uFogColor, d * 0.6 * (1.0 - uAdditive));
+  gl_FragColor = vec4(c, a);
+}`;
+
+/** The glass tube bonus: see-through, bright along its outline like glass, faint rings every 4 m. */
+export const tubeVert = /* glsl */ `
+attribute float aLen;
+attribute float aBirth;
+uniform float uNow;
+varying vec3 vN;
+varying vec3 vV;
+varying float vLen;
+varying float vFlash;
+varying float vDist;
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vN = normalize(mat3(modelMatrix) * normal);
+  vV = cameraPosition - wp.xyz;
+  vLen = aLen;
+  vFlash = exp(-max(uNow - aBirth, 0.0) * 4.0);
+  vec4 mv = viewMatrix * wp;
+  vDist = -mv.z;
+  gl_Position = projectionMatrix * mv;
+}`;
+
+export const tubeFrag = /* glsl */ `
+uniform vec3 uColor;
+uniform vec3 uFogColor;
+uniform float uFogFar;
+uniform float uAdditive;
+uniform float uDim;
+varying vec3 vN;
+varying vec3 vV;
+varying float vLen;
+varying float vFlash;
+varying float vDist;
+void main() {
+  float facing = abs(dot(normalize(vN), normalize(vV)));
+  float rim = pow(1.0 - facing, 2.4);
+  float ring = smoothstep(0.9, 1.0, abs(fract(vLen / 4.0) * 2.0 - 1.0));
+  float a = (0.06 + 0.7 * rim + ring * 0.16) * uDim;
+  vec3 c = mix(uColor, vec3(1.0), clamp(rim * 0.5 + ring * 0.35 + vFlash * 0.25, 0.0, 1.0));
+  a = min(1.0, a + vFlash * 0.12);
+  // Right in front of the camera (the start of your own tube) it fades out instead of glaring.
+  a *= smoothstep(4.0, 16.0, vDist);
   float d = clamp(vDist / uFogFar, 0.0, 1.0);
   a *= 1.0 - d * 0.75;
   c = mix(c, uFogColor, d * 0.6 * (1.0 - uAdditive));

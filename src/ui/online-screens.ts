@@ -280,6 +280,7 @@ export function onlinePauseScreen(s: OnlineSession): string {
     <p class="m-text">${alive ? 'The others keep flying while this menu is open, and so does your glider. Go back quickly.' : 'The others keep flying while this menu is open.'}</p>
     <div class="m-list">
       <button class="mi primary" data-act="online-resume" data-focus>Back to the flight</button>
+      <button class="mi" data-act="go" data-val="controls">Controls ${ARROW}</button>
       <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       <button class="mi" data-act="leave">Leave the game ${ARROW}</button>
     </div>`,

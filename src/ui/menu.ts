@@ -82,6 +82,7 @@ type Screen =
   | 'main'
   | 'solo'
   | 'howto'
+  | 'controls'
   | 'settings'
   | 'online'
   | 'host'
@@ -123,6 +124,7 @@ export class Menu {
   private onlineStatus = '';
   /** Where Settings returns to: the main menu or the pause menu. */
   private settingsReturn: Screen = 'main';
+  private controlsReturn: Screen = 'main';
   /** Online: what to do once the pilot agreed to the radio rules. */
   private afterConsent: (() => void) | null = null;
   private listTimer = 0;
@@ -505,6 +507,7 @@ export class Menu {
     switch (act) {
       case 'go':
         if (val === 'settings') this.settingsReturn = this.screen === 'pause' || this.screen === 'online-pause' ? this.screen : 'main';
+        if (val === 'controls') this.controlsReturn = this.screen === 'controls' ? this.controlsReturn : this.screen;
         if (val === 'online') this.listNotice = '';
         this.show(val as Screen);
         break;
@@ -645,6 +648,10 @@ export class Menu {
         break;
       case 'assist':
         p.settings.autoHorizon = val === 'on';
+        this.settingsChanged();
+        break;
+      case 'mouse':
+        p.settings.mouseSteer = val === 'on';
         this.settingsChanged();
         break;
       case 'quality':
@@ -812,6 +819,8 @@ export class Menu {
         return this.soloScreen();
       case 'howto':
         return this.howtoScreen();
+      case 'controls':
+        return this.controlsScreen();
       case 'settings':
         return this.settingsScreen();
       case 'online':
@@ -892,9 +901,10 @@ export class Menu {
         <button class="mi wio" data-act="go" data-val="online">who is online? <span class="tag" id="wio-count"${this.onlineCount > 0 ? '' : ' hidden'}>${this.onlineCount > 0 ? `${this.onlineCount} online` : ''}</span></button>
         <button class="mi" data-act="go" data-val="board">Leaderboard ${ARROW}</button>
         <button class="mi" data-act="go" data-val="howto">How to fly ${ARROW}</button>
+        <button class="mi" data-act="go" data-val="controls">Controls ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
       </nav>`,
-      `<span class="m-ver">v0.14 · Zoo</span><span>Fly free. Leave light behind.</span>`,
+      `<span class="m-ver">v0.16 · Glass &amp; Water</span><span>Fly free. Leave light behind.</span>`,
     );
   }
 
@@ -939,6 +949,81 @@ export class Menu {
     );
   }
 
+  /** Every way to fly: keyboard, mouse steering, gamepad and touch, and the switch for mouse steering. */
+  private controlsScreen(): string {
+    this.back = this.controlsReturn;
+    const s = this.profile.settings;
+    const touch = this.h.online.touch();
+    const k = (...keys: string[]) => keys.map((x) => `<kbd>${x}</kbd>`).join(' ');
+    const table = (title: string, rows: [string, string][], note = '') =>
+      `<h3 class="st-h">${title}</h3>${note ? `<p class="m-hint">${note}</p>` : ''}<div class="keys-wrap"><table class="keys ctl"><tbody>${rows
+        .map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`)
+        .join('')}</tbody></table></div>`;
+    const nose = s.invertPitch ? 'Nose down, up (flight mode)' : 'Nose up, down';
+    const keyboard = table(
+      'Keyboard',
+      [
+        ['Turn left, right', `${k('←', '→')} or ${k('A', 'D')}`],
+        [nose, `${k('↑', '↓')} or ${k('W', 'S')}`],
+        ['Roll left, right', k('Q', 'E')],
+        ['Fire', `${k('Space')}, ${k('F')} or the left mouse button`],
+        ['Boost', `${k('Shift')} or ${k('⌘ Command')}`],
+        ['Special ability', k('C')],
+        ['Camera view', `${k('V')} or the eye button`],
+        ['Zoom, look around', 'Mouse wheel; drag with the right mouse button'],
+        ['Talk on the radio (online)', `Hold ${k('R')}, press it 3× to keep the mic on`],
+        ['Music on, off', k('M')],
+        ['Pause', `${k('Esc')} or ${k('P')}`],
+      ],
+      s.invertPitch ? 'Flight mode is on: arrow up lowers the nose, like in a plane (Settings).' : 'Flight mode is off: arrow up raises the nose (Settings).',
+    );
+    const mouse = table(
+      'Mouse steering',
+      [
+        ['Steer', 'Point where you want to fly: the further from the middle, the harder the turn. The ring in the middle shows it.'],
+        ['Fire', 'Left mouse button'],
+        ['Boost', 'Right mouse button'],
+        ['Special ability', 'Middle mouse button (or the wheel button)'],
+        ['Zoom', 'Mouse wheel'],
+        ['Roll and everything else', `Keyboard as above, for example ${k('Q')} ${k('E')} to roll`],
+      ],
+      'Mouse up always lifts the nose. The keyboard keeps working at the same time.',
+    );
+    const pad = table('Gamepad', [
+      ['Turn, nose', 'Left stick'],
+      ['Roll', 'LB, RB'],
+      ['Fire', 'LT or X'],
+      ['Boost', 'RT or A'],
+      ['Special ability', 'B'],
+      ['Look around', 'Right stick'],
+      ['Talk on the radio (online)', 'Y or d-pad up'],
+      ['Camera view', 'Back'],
+      ['Pause', 'Start'],
+    ]);
+    const touchTable = table(
+      'Phone and tablet',
+      [
+        ['Steer', 'Right thumb: a stick appears wherever it lands'],
+        ['Boost, roll, fire, special', 'Buttons under the left thumb'],
+        ['Talk on the radio (online)', 'Hold the MIC button; tap it 3× to keep it on, once more to turn it off'],
+        ['Zoom, look around', 'Two fingers: pinch and drag; a quick two-finger tap puts the camera back'],
+        ['Camera view', 'Eye button'],
+        ['Pause', 'II button'],
+      ],
+    );
+    const steer = touch
+      ? ''
+      : `<div class="m-row"><span class="lbl">Steer with</span><div class="seg"><button data-act="mouse" data-val="off" aria-pressed="${!s.mouseSteer}">Keyboard</button><button data-act="mouse" data-val="on" aria-pressed="${s.mouseSteer}">Mouse</button></div></div>`;
+    const parts = touch ? [touchTable, pad, keyboard] : s.mouseSteer ? [mouse, keyboard, pad, touchTable] : [keyboard, mouse, pad, touchTable];
+    return frame(
+      `<p class="m-kicker">Controls</p>
+      <h2 class="m-title">How you steer</h2>
+      ${steer}
+      ${parts.join('')}
+      <div class="m-list"><button class="mi" data-act="back">Back ${ARROW}</button></div>`,
+    );
+  }
+
   private howtoScreen(): string {
     this.back = 'main';
     return frame(
@@ -949,7 +1034,7 @@ export class Menu {
       <p class="m-text">Your gun fires shots that fly straight through walls and only hit other ships. They curve a little towards a ship in front of them. Three hits bring a ship down (the Bulwark takes five). Hold the trigger too long and the gun overheats.</p>
       <p class="m-text">Every level has obstacles in the arena: sky islands, spires, turbine rings, asteroids and more, and many of them move. Flying into one is deadly and shots fizzle on them. The radar shows their shape, and a warning appears when you get close.</p>
       <p class="m-text">The eye button (or <kbd>V</kbd>) switches the camera: behind the ship, cockpit, rear three-quarter, front, top, below, far away and a clean view with nothing but the controls. Every round starts behind the ship. Two fingers zoom and turn the camera; a quick two-finger tap puts it back.</p>
-      <p class="m-text">Every ship has a special ability on <kbd>C</kbd> that recharges after use. Bonus rings give boost and the bonus they show: triple shot, big wall, shield, cool gun, turbo, seeker shots or a repair.</p>
+      <p class="m-text">Every ship has a special ability on <kbd>C</kbd> that recharges after use. Bonus rings give boost and the bonus they show: triple shot, big wall, shield, cool gun, turbo, seeker shots, a repair, a glass tube (your wall becomes a thick see-through tube, open at both ends: you can fly through it, never through its skin) or a giant wall (five times as high, with big holes to fly through).</p>
       <div class="keys-wrap">
         <table class="keys">
           <thead><tr><th>Action</th><th>Keyboard</th><th>Gamepad</th><th>Touch</th></tr></thead>
@@ -967,6 +1052,7 @@ export class Menu {
           </tbody>
         </table>
       </div>
+      <p class="m-hint">On a computer you can also steer with the mouse: the glider flies where it points. All controls, and the switch for mouse steering: <button class="linkish" data-act="go" data-val="controls">Controls</button>.</p>
       <div class="m-list"><button class="mi" data-act="back">Back ${ARROW}</button></div>`,
     );
   }
@@ -990,8 +1076,10 @@ export class Menu {
           <input id="musicvol" class="m-range" type="range" min="0" max="100" step="5" value="${Math.round(s.musicVolume * 100)}"></div>
         <div class="m-row"><span class="lbl">Flight mode</span>${seg('invert', [['on', 'On: ↑ nose down'], ['off', 'Off: ↑ nose up']], s.invertPitch ? 'on' : 'off')}</div>
         <div class="m-row"><span class="lbl">Auto-horizon</span>${seg('assist', [['off', 'Off'], ['on', 'On']], s.autoHorizon ? 'on' : 'off')}</div>
+        ${this.h.online.touch() ? '' : `<div class="m-row"><span class="lbl">Steering</span>${seg('mouse', [['off', 'Keyboard'], ['on', 'Mouse']], s.mouseSteer ? 'on' : 'off')}</div>`}
         <div class="m-row"><span class="lbl">Graphics</span>${seg('quality', [['auto', 'Auto'], ['low', 'Low'], ['high', 'High']], s.quality)}</div>
       </div>
+      <p class="m-hint">Mouse steering: the glider flies where the mouse points, the further from the middle the harder it turns; left button fires, right button boosts. All controls: <button class="linkish" data-act="go" data-val="controls">Controls</button>.</p>
       <p class="m-hint">Flight mode steers like a plane: arrow up (or stick forward) lowers the nose. Auto-horizon levels your ship slowly when you are not rolling. Music: twelve tracks play one after another in a random order and keep going through menus and games; press M or the music button to switch it on or off at any time.</p>
       <div class="m-list"><button class="mi" data-act="back">Back ${ARROW}</button></div>`,
     );
@@ -1005,6 +1093,7 @@ export class Menu {
       <div class="m-list">
         <button class="mi primary" data-act="resume">Resume</button>
         <button class="mi" data-act="restart">Restart ${ARROW}</button>
+        <button class="mi" data-act="go" data-val="controls">Controls ${ARROW}</button>
         <button class="mi" data-act="go" data-val="settings">Settings ${ARROW}</button>
         <button class="mi" data-act="quit">Main menu ${ARROW}</button>
       </div>`,

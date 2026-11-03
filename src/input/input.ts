@@ -16,6 +16,29 @@ export function countTap(taps: number[], now = performance.now(), need = 5): boo
 }
 const dead = (v: number) => (Math.abs(v) < DEAD ? 0 : (v - Math.sign(v) * DEAD) / (1 - DEAD));
 
+/** Mouse steering: full deflection this far from the middle (share of the smaller screen side). */
+export const MOUSE_RANGE = 0.3;
+/** Mouse steering: no steering this close to the middle (share of the range). */
+export const MOUSE_DEAD = 0.07;
+
+/**
+ * Mouse steering: the cursor's offset from the middle of the screen, as a
+ * stick (x right, y up), at most 1 long, with a small dead zone and a gentle
+ * curve for fine corrections near the middle.
+ */
+export function mouseStick(mx: number, my: number, w: number, h: number): { x: number; y: number } {
+  const r = Math.max(1, Math.min(w, h) * MOUSE_RANGE);
+  let x = (mx - w / 2) / r;
+  let y = (h / 2 - my) / r;
+  const m = Math.hypot(x, y);
+  if (m < MOUSE_DEAD) return { x: 0, y: 0 };
+  const c = Math.min(1, m);
+  const k = ((c - MOUSE_DEAD) / (1 - MOUSE_DEAD)) ** 1.25 / m;
+  x *= k;
+  y *= k;
+  return { x, y };
+}
+
 /**
  * Merges keyboard, gamepad and touch into one pilot input per tick.
  * Keys ramp up smoothly so tapping gives small corrections.
@@ -35,6 +58,17 @@ export class InputManager {
   private mouseFire = false;
   /** Right mouse button dragging the camera around the ship. */
   private dragLook: { x: number; y: number } | null = null;
+  /**
+   * Mouse steering (computer): fly where the mouse points. The right button
+   * boosts and the middle button fires the special instead of moving the camera.
+   */
+  mouseSteer = false;
+  /** Last mouse position, and whether the mouse has been seen at all. */
+  private mx = 0;
+  private my = 0;
+  private mouseSeen = false;
+  private mouseBoost = false;
+  private mouseSpecial = false;
   /** V or the gamepad's back button: next camera view. */
   onView: () => void = () => undefined;
   /** Camera: zoom factor (< 1 comes closer), turn and tilt in radians. */
@@ -108,6 +142,14 @@ export class InputManager {
       this.keys.clear();
       this.metaHeld = false;
       this.mouseFire = false;
+      this.mouseBoost = false;
+      this.mouseSpecial = false;
+    });
+    // Mouse steering follows the cursor everywhere on the page.
+    window.addEventListener('mousemove', (e) => {
+      this.mx = e.clientX;
+      this.my = e.clientY;
+      this.mouseSeen = true;
     });
     // Mouse: hold the left button on the 3D view to fire.
     window.addEventListener('mousedown', (e) => {
@@ -115,7 +157,11 @@ export class InputManager {
     });
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this.mouseFire = false;
-      if (e.button === 2) this.dragLook = null;
+      if (e.button === 2) {
+        this.dragLook = null;
+        this.mouseBoost = false;
+      }
+      if (e.button === 1) this.mouseSpecial = false;
     });
     // Right mouse button drags the camera around the ship, the wheel (or a trackpad pinch) zooms.
     const onView = (t: EventTarget | null) => {
@@ -123,7 +169,17 @@ export class InputManager {
       return id === 'scene' || id === 'touch';
     };
     window.addEventListener('mousedown', (e) => {
-      if (e.button === 2 && this.capturing && onView(e.target)) this.dragLook = { x: e.clientX, y: e.clientY };
+      if (!this.capturing || !onView(e.target)) return;
+      if (this.mouseSteer) {
+        // Mouse steering: right button boosts, middle button fires the special.
+        if (e.button === 2) this.mouseBoost = true;
+        if (e.button === 1) {
+          e.preventDefault();
+          this.mouseSpecial = true;
+        }
+        return;
+      }
+      if (e.button === 2) this.dragLook = { x: e.clientX, y: e.clientY };
     });
     window.addEventListener('mousemove', (e) => {
       const d = this.dragLook;
@@ -155,10 +211,19 @@ export class InputManager {
     this.keys.clear();
     this.metaHeld = false;
     this.mouseFire = false;
+    this.mouseBoost = false;
+    this.mouseSpecial = false;
     this.dragLook = null;
     this.kx = 0;
     this.ky = 0;
     this.kr = 0;
+  }
+
+  /** Mouse steering stick right now (x right, y up), for the aim ring; null when mouse steering is not active. */
+  mouseAim(): { x: number; y: number; mx: number; my: number } | null {
+    if (!this.mouseSteer || !this.capturing || !this.mouseSeen) return null;
+    const s = mouseStick(this.mx, this.my, window.innerWidth, window.innerHeight);
+    return { x: s.x, y: s.y, mx: this.mx, my: this.my };
   }
 
   /** Push to talk: R, or Y / d-pad up on a gamepad. */
@@ -230,15 +295,17 @@ export class InputManager {
 
     const t = this.touch.state;
     const sy = clamp(this.ky + py + t.steerY, -1, 1);
-    this.out.steerX = clamp(this.kx + px + t.steerX, -1, 1);
-    this.out.steerY = this.invertPitch ? -sy : sy;
+    // Mouse steering: the glider turns towards the cursor (mouse up = nose up, whatever the flight mode).
+    const ms = this.mouseSteer && this.capturing && this.mouseSeen ? mouseStick(this.mx, this.my, window.innerWidth, window.innerHeight) : null;
+    this.out.steerX = clamp(this.kx + px + t.steerX + (ms ? ms.x : 0), -1, 1);
+    this.out.steerY = clamp((this.invertPitch ? -sy : sy) + (ms ? ms.y : 0), -1, 1);
     this.out.roll = clamp(this.kr + pr + t.roll, -1, 1);
     // Boost: Command (Mac), or Shift on any keyboard.
-    this.out.boost = this.key('MetaLeft', 'MetaRight', 'ShiftLeft', 'ShiftRight') || pb || t.boost;
+    this.out.boost = this.key('MetaLeft', 'MetaRight', 'ShiftLeft', 'ShiftRight') || pb || t.boost || this.mouseBoost;
     // Fire: Space, F or the left mouse button.
     this.out.fire = this.key('Space', 'KeyF') || this.mouseFire || pf || t.fire;
     // Special ability: C, B on a gamepad or the touch button.
-    this.out.special = this.key('KeyC') || ps || t.special;
+    this.out.special = this.key('KeyC') || ps || t.special || this.mouseSpecial;
     return this.out;
   }
 }

@@ -25,7 +25,26 @@ import { BIG_WALL, POWERS, POWER_ORDER, RAPID_INTERVAL, SEEKER_CONE, SEEKER_HOMI
 import { JAM_TICKS, SHIPS, SHOCKWAVE_RADIUS, type ShipId, type ShipSpec, type SpecialKind } from './ships';
 import { AXIS_FWD, AXIS_LEFT, AXIS_UP, Quat, TWO_PI, V3, dcos, dsin } from './math';
 import { Rng } from './rng';
-import { SEG_SHIFT, SpatialHash, Trail, quadCorners, segQuad, segSegDistSq, segmentBounds, wallDistSq } from './trail';
+import {
+  GIANT_HALF,
+  SEG_SHIFT,
+  SpatialHash,
+  TUBE_RADIUS,
+  Trail,
+  WALL_HOLES,
+  WALL_PLAIN,
+  WALL_TUBE,
+  hasHoles,
+  inHole,
+  isTubeSeg,
+  isWallKind,
+  quadCorners,
+  segQuad,
+  segSegDistSq,
+  segTube,
+  segmentBounds,
+  wallDistSq,
+} from './trail';
 import { NEUTRAL_INPUT, type CrashInfo, type Difficulty, type LevelId, type Phase, type PilotInput, type SimEvent } from './types';
 
 export interface PilotSetup {
@@ -137,6 +156,9 @@ interface NetTarget {
  * The whole game state. step() advances it by exactly one tick (1/60 s).
  * Same setup + same inputs = same result on every device.
  */
+/** Numbers per wall sample in the online state message: x, y, z, up x, y, z, half height, kind. */
+export const WALL_SAMPLE = 8;
+
 export class World {
   readonly spec: LevelSpec;
   readonly rng: Rng;
@@ -452,21 +474,26 @@ export class World {
   }
 
   /**
-   * Online: wall samples of a remote glider, as [x, y, z, ux, uy, uz, h] groups,
-   * starting at sample index start. Samples that are already known are skipped.
+   * Online: wall samples of a remote glider, as [x, y, z, ux, uy, uz, h, kind]
+   * groups (WALL_SAMPLE numbers each), starting at sample index start. Samples
+   * that are already known are skipped.
    */
   addRemoteSamples(id: number, start: number, data: readonly number[]): void {
     const g = this.gliders[id];
     if (!g || !g.remote) return;
     const tr = this.trails[id];
-    for (let k = 0; k * 7 + 6 < data.length; k++) {
+    const N = WALL_SAMPLE;
+    for (let k = 0; k * N + N - 1 < data.length; k++) {
       if (start + k < tr.count) continue;
       if (tr.count >= SEG_SHIFT - 1) return;
-      const o = k * 7;
+      const o = k * N;
       tmpA.set(data[o], data[o + 1], data[o + 2]);
       tmpB.set(data[o + 3], data[o + 4], data[o + 5]);
       const h = data[o + 6];
-      tr.add(tmpA, tmpB, this.tick, h > 0.5 && h < WALL_HALF * BIG_WALL + 0.01 ? h : WALL_HALF);
+      const kind = isWallKind(data[o + 7]) ? data[o + 7] : WALL_PLAIN;
+      // Heights come from another device: only the ones the bonuses can make.
+      const half = kind === WALL_TUBE ? TUBE_RADIUS : kind === WALL_HOLES ? GIANT_HALF : h > 0.5 && h < WALL_HALF * BIG_WALL + 0.01 ? h : WALL_HALF;
+      tr.add(tmpA, tmpB, this.tick, half, kind);
       const n = tr.count;
       if (n >= 2) {
         const seg = n - 2;
@@ -605,7 +632,7 @@ export class World {
     const ex = p.x + d.x * len;
     const ey = p.y + d.y * len;
     const ez = p.z + d.z * len;
-    const m = WALL_HALF * BIG_WALL + 0.5;
+    const m = GIANT_HALF + 0.5;
     const cand = this.cand;
     cand.clear();
     this.hash.query(
@@ -625,8 +652,8 @@ export class World {
       const tr = this.trails[owner];
       if (owner === self && seg > tr.count - 2 - SELF_SKIP) continue;
       if (this.teams && this.gliders[owner].team === this.gliders[self].team) continue;
-      // Plan with the full height: a young wall piece is still growing.
-      quadCorners(tr, seg, c, this.tick + TAPER_TICKS);
+      // Plan with the full height: a young wall piece is still growing. A glass tube counts as a wall as high as it is wide.
+      quadCorners(tr, seg, c, this.tick + TAPER_TICKS, true);
       const t = segQuad(p.x, p.y, p.z, d.x * len, d.y * len, d.z * len, c);
       if (t >= 0 && t < best) best = t;
     }
@@ -855,7 +882,9 @@ export class World {
     if (tr.count >= SEG_SHIFT - 1) return;
     tailPoint(g, tmpA);
     g.q.rotate(AXIS_UP, tmpB);
-    tr.add(tmpA, tmpB, this.tick, g.power === 'bigwall' ? WALL_HALF * BIG_WALL : WALL_HALF);
+    if (g.power === 'tube') tr.add(tmpA, tmpB, this.tick, TUBE_RADIUS, WALL_TUBE);
+    else if (g.power === 'giant') tr.add(tmpA, tmpB, this.tick, GIANT_HALF, WALL_HOLES);
+    else tr.add(tmpA, tmpB, this.tick, g.power === 'bigwall' ? WALL_HALF * BIG_WALL : WALL_HALF);
     const n = tr.count;
     if (n >= 2) {
       const seg = n - 2;
@@ -897,12 +926,27 @@ export class World {
       if (own && seg > newest - SELF_SKIP) continue;
       // In team games your own team's walls let you through.
       if (this.teams && this.gliders[owner].team === g.team) continue;
-      quadCorners(tr, seg, c, this.tick);
-      let t = segQuad(o.x, o.y, o.z, dx, dy, dz, c);
-      const t2 = segQuad(o.x + wx, o.y + wy, o.z + wz, dx, dy, dz, c);
-      if (t2 >= 0 && (t < 0 || t2 < t)) t = t2;
-      const t3 = segQuad(o.x - wx, o.y - wy, o.z - wz, dx, dy, dz, c);
-      if (t3 >= 0 && (t < 0 || t3 < t)) t = t3;
+      let t = -1;
+      if (isTubeSeg(tr, seg)) {
+        // Glass tube: crossing its skin is deadly, from outside or from inside.
+        for (let k = -1; k <= 1; k++) {
+          const tk = segTube(tr, seg, o.x + wx * k, o.y + wy * k, o.z + wz * k, dx, dy, dz, this.tick);
+          if (tk >= 0 && (t < 0 || tk < t)) t = tk;
+        }
+      } else {
+        quadCorners(tr, seg, c, this.tick);
+        const holes = hasHoles(tr, seg);
+        for (let k = -1; k <= 1; k++) {
+          const sx = o.x + wx * k;
+          const sy = o.y + wy * k;
+          const sz = o.z + wz * k;
+          const tk = segQuad(sx, sy, sz, dx, dy, dz, c);
+          if (tk < 0 || (t >= 0 && tk >= t)) continue;
+          // Giant wall: where this part of the glider meets the wall there may be a hole.
+          if (holes && inHole(tr, seg, sx + dx * tk, sy + dy * tk, sz + dz * tk, this.tick)) continue;
+          t = tk;
+        }
+      }
       if (t >= 0 && (t < hitT || (t === hitT && id < hitId))) {
         hitT = t;
         hitBy = owner;
